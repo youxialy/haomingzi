@@ -4,11 +4,11 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
 
-  /* ---------- 反馈渠道配置（填上即显示对应入口） ---------- */
+  /* ---------- 反馈渠道配置（填上即显示对应入口；按顺序展示，GitHub 永远兜底） ---------- */
   var FEEDBACK = {
-    qqGroup: '',   // QQ 反馈群号，如 '123456789'
-    qq: '',        // 站长个人 QQ（没有群时展示）
-    github: 'https://github.com/youxialy/haomingzi/issues'  // 网页反馈入口
+    qqGroup: '',   // QQ 反馈群号，如 '123456789'（同学零门槛：复制群号搜索加群）
+    txc: '',       // 腾讯兔小巢链接，如 'https://support.qq.com/product/xxxxx'（QQ/微信登录即可留言）
+    github: 'https://github.com/youxialy/haomingzi/issues'  // 兜底渠道：需 GitHub 账号
   };
 
   /* ---------- Toast ---------- */
@@ -449,21 +449,26 @@
   function openFeedback() {
     var box = $('fbChannels');
     var rows = [];
-    var qq = FEEDBACK.qqGroup || FEEDBACK.qq;
-    if (qq) {
-      rows.push('<div class="fb-row"><span>' + (FEEDBACK.qqGroup ? 'QQ 反馈群：<b>' + FEEDBACK.qqGroup + '</b>' : '站长 QQ：<b>' + FEEDBACK.qq + '</b>') +
-        '</span><button class="btn sm" id="fbCopyQQ">复制</button></div>');
+    var hasEasy = FEEDBACK.qqGroup || FEEDBACK.txc;
+    if (FEEDBACK.qqGroup) {
+      rows.push('<div class="fb-row"><span>QQ 反馈群：<b>' + FEEDBACK.qqGroup + '</b>' +
+        '<br><span class="hint">加群提意见，还能第一时间收到更新通知</span></span>' +
+        '<button class="btn sm" id="fbCopyQQ">复制群号</button></div>');
     }
-    rows.push('<div class="fb-row"><span>网页反馈（无需加群，需 GitHub 账号）</span>' +
+    if (FEEDBACK.txc) {
+      rows.push('<div class="fb-row"><span>在线留言板<span class="hint"><br>QQ/微信一键登录即可留言，无需注册</span></span>' +
+        '<a class="btn sm" href="' + FEEDBACK.txc + '" target="_blank" rel="noopener">去留言</a></div>');
+    }
+    rows.push('<div class="fb-row"><span>网页反馈' + (hasEasy ? '（进阶）' : '') + '<span class="hint"><br>需 GitHub 账号' + (hasEasy ? '' : '，适合能用 GitHub 的同学') + '</span></span>' +
       '<a class="btn sm" href="' + FEEDBACK.github + '" target="_blank" rel="noopener">去填写</a></div>');
     box.innerHTML = rows.join('');
-    if (qq) {
+    if (FEEDBACK.qqGroup) {
       $('fbCopyQQ').addEventListener('click', function () {
-        Editor.copyText(qq, '已复制，去 QQ 搜索加入即可');
+        Editor.copyText(FEEDBACK.qqGroup, '已复制群号，去 QQ 搜索加入即可');
       });
     }
-    $('fbNote').textContent = qq
-      ? '反馈会尽快处理；加群还能第一时间收到功能更新通知。'
+    $('fbNote').textContent = hasEasy
+      ? '以上渠道任选其一，反馈都会尽快处理；通用问题可先点「复制反馈模板」。'
       : '点「复制反馈模板」填好内容，可通过任意你能联系到站长的渠道发送。';
     $('feedbackMask').hidden = false;
   }

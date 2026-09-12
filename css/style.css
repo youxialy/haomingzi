@@ -282,3 +282,15 @@ textarea { resize: vertical; line-height: 1.8; }
   .custom-range { flex-wrap: wrap; }
   .custom-range input { max-width: none; flex: 1; }
 }
+
+/* ---------- 反馈弹窗 ---------- */
+.link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: inherit; padding: 0; font-family: inherit; }
+.link-btn:hover { text-decoration: underline; }
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal-mask[hidden] { display: none; }
+.modal-card { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; width: 100%; max-width: 430px; box-shadow: 0 12px 40px rgba(0,0,0,.18); }
+.modal-card h3 { margin: 0 0 8px; }
+.fb-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px dashed var(--border); font-size: 14.5px; }
+.fb-row:last-child { border-bottom: none; }
+.fb-row .btn, .fb-row a.btn { white-space: nowrap; flex-shrink: 0; }
+.modal-ops { display: flex; gap: 10px; margin-top: 14px; justify-content: flex-end; }

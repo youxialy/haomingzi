@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>实习日报一点通 - 日报·周报·月报·实习总结一键生成</title>
+<meta name="description" content="面向顶岗实习学生的报告生成工具：一次配置岗位，每天30秒生成日报，周报月报实习总结一键汇总。数据只存本地浏览器，无账号无上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="logo">📋</span>
+      <div class="brand-text">
+        <h1>实习日报一点通</h1>
+        <p>日报 · 周报 · 月报 · 实习总结，一键生成</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn ghost" href="guide.html">写作指南</a>
+      <button class="btn ghost" id="themeBtn" title="切换深色模式">🌙</button>
+    </div>
+  </div>
+</header>
+
+<div class="banner" id="setupBanner" hidden>
+  <span>👋 第一次使用？先花 5 分钟完成岗位配置，之后每天 30 秒一键生成报告。</span>
+  <button class="btn primary sm" id="bannerSetupBtn">去配置</button>
+</div>
+
+<div class="due-strip-wrap" id="dueStripWrap" hidden>
+  <div class="due-strip" id="dueStrip"></div>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="daily">今日日报</button>
+  <button class="tab" data-tab="aggregate">周报月报</button>
+  <button class="tab" data-tab="summary">实习总结</button>
+  <button class="tab" data-tab="calendar">日历·待办</button>
+  <button class="tab" data-tab="phrases">素材库</button>
+  <button class="tab" data-tab="settings">设置</button>
+</nav>
+
+<main class="container">
+
+  <!-- ============ 今日日报 ============ -->
+  <section class="panel active" id="tab-daily">
+    <div class="card date-card">
+      <div class="date-nav">
+        <button class="btn ghost sm" id="prevDay">‹ 前一天</button>
+        <input type="date" id="dateInput" class="date-input">
+        <button class="btn ghost sm" id="nextDay">后一天 ›</button>
+      </div>
+      <div class="stat-line" id="dailyStat"></div>
+      <label class="field-label">今日特殊事项（可选，生成时合并进「今日完成」）</label>
+      <input type="text" id="extraInput" placeholder="例如：参加了消防演练 / 协助月度盘点">
+      <div class="actions">
+        <button class="btn primary" id="genBtn">✨ 生成日报</button>
+        <button class="btn" id="variantBtn" title="对同一日期换一批不同的句式组合">🔄 换一版</button>
+        <button class="btn" id="saveBtn">💾 保存</button>
+        <button class="btn" id="copyBtn">📋 复制</button>
+        <button class="btn ghost" id="markBtn">✅ 标记已提交</button>
+      </div>
+      <p class="hint">生成内容基于你配置的真实工作模块自动成文；复制后粘贴到学习通日报提交框即可。手动改过的内容重新生成前会先确认，不会被静默覆盖。</p>
+    </div>
+    <div class="card editor-card">
+      <div class="editor-head"><span id="wordCount">0 字</span><span class="hint" id="wordTarget"></span></div>
+      <textarea id="reportEditor" rows="18" placeholder="点击「✨ 生成日报」自动产出全文，也可以直接手写或修改生成结果…"></textarea>
+    </div>
+  </section>
+
+  <!-- ============ 周报月报 ============ -->
+  <section class="panel" id="tab-aggregate">
+    <div class="card">
+      <div class="agg-controls">
+        <div class="seg" id="aggType">
+          <button class="active" data-type="weekly">周报</button>
+          <button data-type="monthly">月报</button>
+        </div>
+        <div class="seg ghost-seg" id="rangePicks">
+          <button class="active" data-range="this">本期</button>
+          <button data-range="last">上期</button>
+          <button data-range="custom">自定义</button>
+        </div>
+        <div class="custom-range" id="customRange" hidden>
+          <input type="date" id="aggFrom"> <span>~</span> <input type="date" id="aggTo">
+        </div>
+      </div>
+      <div class="stat-line" id="aggStat"></div>
+      <div class="actions">
+        <button class="btn primary" id="aggGenBtn">✨ 生成草稿</button>
+        <button class="btn" id="aggCopyBtn">📋 复制</button>
+        <button class="btn ghost" id="aggPrintBtn">🖨 打印</button>
+        <button class="btn ghost" id="aggSaveBtn">💾 保存留档</button>
+      </div>
+      <p class="hint">按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报。</p>
+    </div>
+    <div class="card editor-card">
+      <textarea id="aggEditor" rows="22" placeholder="选择类型和范围后点击「✨ 生成草稿」——自动汇总区间内的日报内容…"></textarea>
+    </div>
+    <div class="card" id="savedCard" hidden>
+      <h3 class="card-title">留档记录</h3>
+      <ul class="saved-list" id="savedList"></ul>
+    </div>
+  </section>
+
+  <!-- ============ 实习总结 ============ -->
+  <section class="panel" id="tab-summary">
+    <div class="card">
+      <h3 class="card-title">实习总结（学习通「总结」入口提交）</h3>
+      <p class="hint">汇总实习期间全部日报，生成完整实习总结：概况 / 主要工作 / 收获成长 / 不足与改进 / 结语。注意学校设定的总结提交时间范围，过期无法提交。</p>
+      <div class="stat-line" id="sumStat"></div>
+      <div class="actions">
+        <button class="btn primary" id="sumGenBtn">✨ 生成实习总结</button>
+        <button class="btn" id="sumCopyBtn">📋 复制</button>
+        <button class="btn ghost" id="sumPrintBtn">🖨 打印</button>
+      </div>
+    </div>
+    <div class="card editor-card">
+      <textarea id="sumEditor" rows="24" placeholder="积累一段时间的日报后，点击「✨ 生成实习总结」自动汇总全文…"></textarea>
+    </div>
+  </section>
+
+  <!-- ============ 日历·待办 ============ -->
+  <section class="panel" id="tab-calendar">
+    <div class="card cal-card">
+      <div class="cal-head">
+        <button class="btn ghost sm" id="calPrev">‹</button>
+        <h2 id="calTitle"></h2>
+        <button class="btn ghost sm" id="calNext">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span><i class="dot dot-ok"></i>已提交</span>
+        <span><i class="dot dot-draft"></i>已生成未提交</span>
+        <span><i class="dot dot-today"></i>今天</span>
+      </div>
+      <p class="hint">点击任意日期可跳转到当天补写日报（学习通若开启补交限制，过期报告提交不了，尽量当天完成）。</p>
+      <div class="actions">
+        <button class="btn sm" id="backfillBtn">⚡ 批量补写缺失日报</button>
+      </div>
+      <div id="backfillPanel" hidden>
+        <div class="stat-line" id="backfillStat"></div>
+        <div class="backfill-list" id="backfillList"></div>
+        <div class="actions">
+          <button class="btn primary sm" id="backfillRun">生成所选</button>
+          <button class="btn ghost sm" id="backfillToggleAll">全选 / 全不选</button>
+        </div>
+        <p class="hint">列出实习开始以来（最近 31 天内）没写过报告的周一至周五，一键逐篇补齐——内容相互衔接、模块自然轮换。</p>
+      </div>
+    </div>
+    <div class="card todo-card">
+      <h3 class="card-title">今日待办</h3>
+      <div class="add-row">
+        <input type="text" id="todoInput" placeholder="添加待办，例如：记得去学习通上班打卡">
+        <button class="btn sm" id="todoAdd">添加</button>
+      </div>
+      <ul class="todo-list" id="todoList"></ul>
+      <div class="actions">
+        <button class="btn ghost sm" id="todoPreset">＋ 常用：学习通上班打卡</button>
+        <button class="btn ghost sm" id="todoPreset2">＋ 常用：提交今日日报</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 素材库 ============ -->
+  <section class="panel" id="tab-phrases">
+    <div class="card">
+      <h3 class="card-title">常用句式素材库</h3>
+      <p class="hint">写作没思路时点一点：复制后粘贴到报告里，或直接插入今天的日报末尾。</p>
+      <div class="add-row">
+        <select id="phraseCat" class="select"></select>
+        <button class="btn sm ghost" id="phraseCatAll">全部</button>
+      </div>
+      <ul class="phrase-list" id="phraseList"></ul>
+      <div class="add-row">
+        <input type="text" id="phraseInput" placeholder="收藏自己的常用句式…">
+        <button class="btn sm" id="phraseAdd">收藏</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 设置 ============ -->
+  <section class="panel" id="tab-settings">
+    <div class="card" id="setupCard">
+      <h3 class="card-title">① 选择岗位类型</h3>
+      <div class="job-grid" id="jobGrid"></div>
+      <h3 class="card-title mt">② 勾选你的真实工作模块</h3>
+      <p class="hint">请按实际情况勾选——报告内容的真实性由你负责，工具负责把它们自动写成报告。</p>
+      <div class="module-box" id="moduleBox"></div>
+      <div class="add-row">
+        <input type="text" id="customModule" placeholder="添加自定义模块，如：仓库盘点">
+        <button class="btn sm" id="moduleAdd">添加</button>
+      </div>
+      <h3 class="card-title mt">③ 实习信息（对照学习通实习计划里的起止时间）</h3>
+      <div class="form-grid">
+        <label>实习开始日期 <input type="date" id="cfgStart"></label>
+        <label>实习结束日期 <input type="date" id="cfgEnd"></label>
+        <label>日报字数下限 <input type="number" id="cfgMinWords" value="300" min="100" step="50"></label>
+        <label>公司名称（可选） <input type="text" id="cfgCompany" placeholder="用于报告抬头"></label>
+        <label>岗位名称（可选） <input type="text" id="cfgJobTitle" placeholder="如：电商客服"></label>
+        <label>周报批次截止提醒
+          <select id="cfgWeeklyDue">
+            <option value="">不提醒</option>
+            <option value="0">每周日</option>
+            <option value="1">每周一</option>
+            <option value="2">每周二</option>
+            <option value="3">每周三</option>
+            <option value="4">每周四</option>
+            <option value="5">每周五</option>
+            <option value="6">每周六</option>
+          </select>
+        </label>
+        <label>月报批次截止提醒
+          <select id="cfgMonthlyDue">
+            <option value="">不提醒</option>
+            <option value="last">每月最后一天</option>
+            <option value="25">每月 25 日</option>
+            <option value="26">每月 26 日</option>
+            <option value="27">每月 27 日</option>
+            <option value="28">每月 28 日</option>
+            <option value="1">每月 1 日</option>
+            <option value="2">每月 2 日</option>
+            <option value="3">每月 3 日</option>
+            <option value="5">每月 5 日</option>
+            <option value="10">每月 10 日</option>
+            <option value="15">每月 15 日</option>
+            <option value="20">每月 20 日</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">截止提醒会显示在首页顶部：临近截止（2 天内）变警醒色，防止错过提交窗口。</p>
+
+      <h3 class="card-title mt">④ 日报栏目（可改名、可关闭；「今日完成」为核心栏目不可关闭）</h3>
+      <p class="hint">学校模板不一样就改成一样的：比如只要两栏，就把后两栏的勾去掉。</p>
+      <div id="sectionsBox"></div>
+
+      <div class="actions"><button class="btn primary" id="cfgSave">💾 保存配置</button></div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">数据备份</h3>
+      <p class="hint">所有数据只保存在你自己的浏览器里（无账号、无上传）。换电脑 / 换手机前记得先导出。</p>
+      <div class="actions">
+        <button class="btn" id="exportBtn">⬇ 导出备份</button>
+        <label class="btn file-btn">⬆ 导入备份<input type="file" id="importFile" accept=".json" hidden></label>
+        <button class="btn danger" id="clearBtn">🗑 清空全部数据</button>
+      </div>
+    </div>
+
+    <div class="card boundary">
+      <h3 class="card-title">使用边界（请务必了解）</h3>
+      <p>本工具自动帮你<strong>写</strong>报告——汇总、成文、排版；工作模块请如实配置，报告内容的真实性由你自己负责。</p>
+      <p>本工具<strong>不做、也请勿使用</strong>自动打卡 / 代签 / 脚本刷课：那需要把同学的账号密码交给别人、用脚本绕过平台，涉嫌侵犯公民个人信息和非法入侵计算机信息系统，已有多起追责案例。每天手动上班打卡 + 本工具写报告 = 省时且安全。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p>数据仅存本地浏览器 · 无账号 · 无上传 ｜ <a href="guide.html">实习报告写作指南</a></p>
+  <p class="hint">本工具为写作辅助，不代替学习通官方系统；打卡、提交请在官方 App 完成。</p>
+</footer>
+
+<div id="printSheet"></div>
+<div id="toast" hidden></div>
+
+<script src="js/store.js"></script>
+<script src="js/phrases.js"></script>
+<script src="js/generator.js"></script>
+<script src="js/composer.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+/* ============================================================
+ * harness.js — 生成引擎逻辑自测（Node 环境）
+ * 运行：node test/harness.js
+ * 校验：连续 14 天日报 —— 模块轮换无连续重叠 / 字数达标 / 相邻相似度 / 周月报聚合
+ * ============================================================ */
+var fs = require('fs');
+var path = require('path');
+var vm = require('vm');
+
+var ctx = {
+  window: {},
+  console: console,
+  localStorage: {
+    _s: {},
+    getItem: function (k) { return this._s[k] || null; },
+    setItem: function (k, v) { this._s[k] = v; },
+    removeItem: function (k) { delete this._s[k]; }
+  }
+};
+vm.createContext(ctx);
+
+['store.js', 'phrases.js', 'generator.js', 'composer.js'].forEach(function (f) {
+  var code = fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8');
+  vm.runInContext(code, ctx, { filename: f });
+});
+// 浏览器里 window.X 即全局 X；vm 沙箱需手动提升
+['Store', 'Phrases', 'Generator', 'Composer'].forEach(function (k) {
+  ctx[k] = ctx.window[k];
+});
+
+var Store = ctx.window.Store, Generator = ctx.window.Generator, Composer = ctx.window.Composer;
+
+/* ---------- 构造配置：模拟一位电商客服实习生 ---------- */
+var config = {
+  jobType: 'service',
+  modules: ctx.window.Phrases.jobTypes.service.modules.slice(),
+  startDate: '2026-09-07',
+  endDate: '2026-12-25',
+  minWords: 300,
+  company: '某电商公司',
+  jobTitle: '电商客服'
+};
+var reports = {};
+var stats = {};
+
+var failures = [];
+function check(cond, msg) {
+  if (cond) { console.log('  ✓ ' + msg); }
+  else { console.log('  ✗ ' + msg); failures.push(msg); }
+}
+
+console.log('\n===== 测试 1：连续生成 14 天日报 =====');
+var days = [];
+for (var i = 0; i < 14; i++) {
+  var d = new Date(2026, 8, 7 + i); // 2026-09-07 起
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var dd = String(d.getDate()).padStart(2, '0');
+  days.push(y + '-' + m + '-' + dd);
+}
+
+var texts = [];
+days.forEach(function (ds, idx) {
+  var extra = idx === 3 ? '参加了部门消防安全演练' : '';
+  var r = Generator.generateDaily(ds, config, reports, stats, extra);
+  if (!r) { failures.push('生成失败 ' + ds); return; }
+
+  // 落库（模拟 editor.js 行为）
+  reports[ds] = { date: ds, text: r.text, modules: r.modules, extra: r.extra, problem: r.problem, submitted: true };
+  r.modules.forEach(function (m) {
+    var s = stats[m] || { count: 0, lastDate: '' };
+    s.count++; s.lastDate = ds;
+    stats[m] = s;
+  });
+  texts.push(r.text);
+});
+
+check(days.every(function (d) { return reports[d]; }), '14 天全部生成成功');
+
+// a. 字数达标
+var wordOk = days.every(function (d) { return Generator.charCount(reports[d].text) >= 300; });
+check(wordOk, '每天字数 ≥ 300（实际：' + days.map(function (d) { return Generator.charCount(reports[d].text); }).join('/') + '）');
+
+// b. 相邻两天模块不重叠
+var overlap = false;
+for (var i2 = 1; i2 < days.length; i2++) {
+  var prev = reports[days[i2 - 1]].modules, curr = reports[days[i2]].modules;
+  if (curr.some(function (m) { return prev.indexOf(m) >= 0; })) { overlap = true; console.log('    重叠：' + days[i2] + ' → ' + curr.join(',')); }
+}
+check(!overlap, '相邻两天模块完全不重叠');
+
+// c. 周期内模块覆盖（7 个模块，14 天应全部出现过）
+var used = {};
+days.forEach(function (d) { reports[d].modules.forEach(function (m) { used[m] = 1; }); });
+check(Object.keys(used).length === config.modules.length, '14 天内 7 个模块全覆盖（覆盖 ' + Object.keys(used).length + '/' + config.modules.length + '）');
+
+// d. 相邻相似度
+var maxSim = 0, maxPair = '';
+for (var i3 = 1; i3 < texts.length; i3++) {
+  var s = Generator.similarity(texts[i3], texts[i3 - 1]);
+  if (s > maxSim) { maxSim = s; maxPair = days[i3 - 1] + '↔' + days[i3]; }
+}
+check(maxSim < 0.6, '相邻两天相似度 < 0.60（最大 ' + maxSim.toFixed(3) + ' @ ' + maxPair + '）');
+
+// e. 特殊事项进入正文
+check(reports[days[3]].text.indexOf('消防安全演练') >= 0, '特殊事项已并入当日「今日完成」');
+
+console.log('\n===== 测试 2：周报聚合（2026-09-07 ~ 09-13） =====');
+var weekly = Composer.aggregate('weekly', '2026-09-07', '2026-09-13', config, reports);
+check(!!weekly && weekly.count === 7, '7 篇日报全部聚合（count=' + (weekly && weekly.count) + '）');
+check(weekly.text.indexOf('【实习周报】2026-09-07 ~ 2026-09-13（实习第1周）') === 0, '周报抬头与批次号正确');
+check(weekly.text.indexOf('消防安全演练') >= 0, '特殊事项进入周报「其他专项工作」');
+check(weekly.text.indexOf('四、下周工作计划') > 0, '包含下周计划章节');
+
+console.log('\n===== 测试 3：月报聚合（2026-09-01 ~ 09-30） =====');
+var monthly = Composer.aggregate('monthly', '2026-09-01', '2026-09-30', config, reports);
+check(!!monthly && monthly.count === 14, '14 篇日报全部聚合（count=' + (monthly && monthly.count) + '）');
+check(monthly.text.indexOf('【实习月报】2026-09-01 ~ 2026-09-30（2026-09）') === 0, '月报抬头正确');
+
+console.log('\n===== 测试 4：实习总结 =====');
+var summary = Composer.internshipSummary(config, reports);
+check(!!summary && summary.count === 14, '总结汇总全部日报（count=' + (summary && summary.count) + '）');
+check(summary.text.indexOf('一、实习概况') > 0 && summary.text.indexOf('五、结语') > 0, '包含完整五章结构');
+
+console.log('\n===== 测试 5：备份往返（导出→重置→导入） =====');
+var exported = Store.exportJSON();
+var before = JSON.stringify(Store.data.reports);
+Store.reset();
+var importOk = false;
+Store.importJSON(exported, function () { importOk = true; }, function () {});
+check(importOk, '导入成功');
+check(JSON.stringify(Store.data.reports) === before, '导入后数据与导出时完全一致');
+
+console.log('\n===== 测试 6：少量模块边界（2 个模块） =====');
+var smallCfg = { jobType: 'general', modules: ['整理资料', '参加晨会'], startDate: '2026-09-07', minWords: 200 };
+var sReports = {}, sStats = {};
+var smallOk = true;
+for (var i4 = 0; i4 < 4; i4++) {
+  var r2 = Generator.generateDaily(days[i4], smallCfg, sReports, sStats, '');
+  if (!r2) { smallOk = false; break; }
+  sReports[days[i4]] = { date: days[i4], text: r2.text, modules: r2.modules, extra: '', problem: r2.problem };
+}
+check(smallOk, '2 个模块时连续 4 天生成不崩溃');
+
+console.log('\n===== 测试 7：自定义栏目（改名 + 关闭） =====');
+var cfg7 = JSON.parse(JSON.stringify(config));
+cfg7.sections = [
+  { key: 'done', title: '今日工作内容', on: true },
+  { key: 'gains', title: '收获', on: false },
+  { key: 'problems', title: '问题与反思', on: true },
+  { key: 'plans', title: '明日安排', on: false }
+];
+var r7 = Generator.buildDaily('2026-09-14', cfg7, {}, {}, 0, '');
+check(r7.text.indexOf('一、今日工作内容') >= 0, '自定义标题生效且编号正确');
+check(r7.text.indexOf('二、问题与反思') >= 0, '第二栏目为问题与反思');
+check(r7.text.indexOf('收获与学习') < 0 && r7.text.indexOf('明日计划') < 0, '关闭的栏目不再出现');
+// 关闭 problems 栏 → 问题字段为空 → 周报聚合走「平稳顺利」兜底
+var cfg7b = JSON.parse(JSON.stringify(config));
+cfg7b.sections = [
+  { key: 'done', title: '今日完成', on: true },
+  { key: 'gains', title: '收获与学习', on: true },
+  { key: 'problems', title: '遇到的问题与解决', on: false },
+  { key: 'plans', title: '明日计划', on: true }
+];
+var r7b = Generator.buildDaily('2026-09-14', cfg7b, {}, {}, 0, '');
+check(r7b.problem === null && r7b.text.indexOf('遇到的问题与解决') < 0, '关闭问题栏后不产出问题内容');
+var rep7b = { date: '2026-09-14', text: r7b.text, modules: r7b.modules, extra: '', problem: r7b.problem };
+var rep7bmap = {}; rep7bmap['2026-09-14'] = rep7b;
+var wk7b = Composer.aggregate('weekly', '2026-09-14', '2026-09-14', cfg7b, rep7bmap);
+check(wk7b && wk7b.text.indexOf('本周工作整体平稳顺利') >= 0, '无问题时周报使用兜底表述');
+
+console.log('\n===== 测试 8：换一版（不同盐值输出不同版本） =====');
+var base8 = Generator.generateDaily('2026-09-14', config, {}, {}, '');
+var variant8 = Generator.generateDaily('2026-09-14', config, {}, {}, '', { saltBase: 4321 });
+check(base8 && variant8 && base8.text !== variant8.text, '同一天不同盐值产出不同版本');
+check(Generator.charCount(variant8.text) >= 300, '换一版后字数仍达标');
+
+console.log('\n------------------------------------------');
+if (failures.length) {
+  console.log('❌ 失败 ' + failures.length + ' 项：');
+  failures.forEach(function (f) { console.log('   - ' + f); });
+  process.exit(1);
+} else {
+  console.log('✅ 全部通过');
+}
+
+/* ---------- 附：打印一篇样例供人工检查 ---------- */
+console.log('\n===== 附：样例日报（' + days[3] + '，含特殊事项） =====');
+console.log(reports[days[3]].text);
+console.log('\n===== 附：样例周报 =====');
+console.log(weekly.text);

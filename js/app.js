@@ -6,7 +6,7 @@
 
   /* ---------- 反馈渠道配置（填上即显示对应入口；按顺序展示，GitHub 永远兜底） ---------- */
   var FEEDBACK = {
-    qqGroup: '',   // QQ 反馈群号，如 '123456789'（同学零门槛：复制群号搜索加群）
+    qqGroup: '702547095',   // QQ 反馈群号（同学零门槛：复制群号搜索加群）
     txc: '',       // 腾讯兔小巢链接，如 'https://support.qq.com/product/xxxxx'（QQ/微信登录即可留言）
     github: 'https://github.com/youxialy/haomingzi/issues'  // 兜底渠道：需 GitHub 账号
   };

@@ -170,6 +170,7 @@
     if (lastGenerated && lastGenerated.date === state.date) {
       rec.modules = lastGenerated.modules;
       rec.problem = lastGenerated.problem;
+      rec.tpls = lastGenerated.tpls || [];
     }
     if (!rec.modules) rec.modules = [];
     rec.statCounted = true;

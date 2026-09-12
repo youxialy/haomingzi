@@ -4,8 +4,11 @@
  * 策略：
  *   1. 模块轮换：排除昨日模块 + 按使用次数升序取「最不常用池」随机抽
  *   2. 句式变体：同一日期用日期做种子（可复现），重试时换盐值
- *   3. 字数保障：不足下限时追加不重复的补充句
- *   4. 防雷同：与最近 3 篇做二元组重叠度检查，超阈值自动重抽
+ *   3. 跨天防重：模板级避开最近 6 天用过的句式；句子级与最近 3 天
+ *      的正文逐句比对，相似即换——「换一版 / 重新生成」同样避开当天旧稿
+ *   4. 叠词防护：模块首词（如「参加晨会」）与句式动词撞车时整条跳过
+ *   5. 字数保障：不足下限时追加不重复的补充句
+ *   6. 防雷同兜底：与最近 3 篇做整篇二元组重叠度检查，超阈值自动重抽
  * ============================================================ */
 (function () {
 
@@ -75,6 +78,80 @@
     return choice(rng, ok.length ? ok : arr);
   }
 
+  /* ---------- 跨天防重 ---------- */
+  var TPL_WINDOW = 6;   // 模板级：避开最近 6 天用过的句式
+  var LINE_WINDOW = 3;  // 句子级：与最近 3 天的正文逐句比对
+  var LINE_SIM = 0.8;   // 单句相似度阈值
+
+  // 从一篇报告正文里提取「内容句」（去掉抬头/栏目标题/序号）
+  function contentLines(text) {
+    return (text || '').split('\n').map(function (s) { return s.trim(); })
+      .filter(function (s) {
+        return s.length >= 8 && s.charAt(0) !== '【' && !/^[一二三四五六七八九十]、/.test(s);
+      })
+      .map(function (s) { return s.replace(/^\d+\.\s*/, ''); });
+  }
+
+  function maxSim(line, lines) {
+    var worst = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var s = similarity(line, lines[i]);
+      if (s > worst) worst = s;
+      if (worst >= LINE_SIM) break;
+    }
+    return worst;
+  }
+
+  // 汇总「近期用过的模板」与「近期正文句子」；同一天已有存稿（重新生成/换一版）一并计入
+  function historyFor(dateStr, reports) {
+    var tpls = {}, lines = [], i, j;
+    var tDates = lastNDates(reports, dateStr, TPL_WINDOW);
+    for (i = 0; i < tDates.length; i++) {
+      var t = reports[tDates[i]].tpls || [];
+      for (j = 0; j < t.length; j++) tpls[t[j]] = 1;
+    }
+    var lDates = lastNDates(reports, dateStr, LINE_WINDOW);
+    for (i = 0; i < lDates.length; i++) {
+      lines = lines.concat(contentLines(reports[lDates[i]].text));
+    }
+    var today = reports[dateStr];
+    if (today) {
+      var tt = today.tpls || [];
+      for (j = 0; j < tt.length; j++) tpls[tt[j]] = 1;
+      lines = lines.concat(contentLines(today.text));
+    }
+    return { tpls: tpls, lines: lines };
+  }
+
+  /* 选一条既避开近期模板、又与近期句子不雷同的表达；返回 { tpl, line }
+   * 产出的句子会记入 hist.lines，保证同一篇内各栏目也互不雷同 */
+  function takeFresh(rng, arr, mod, vars, hist) {
+    var pk = pickFresh(rng, arr, mod, vars, hist);
+    if (pk.tpl) hist.tpls[pk.tpl] = 1;   // 本篇内也不复用同一模板
+    if (pk.line) hist.lines.push(pk.line);
+    return pk;
+  }
+
+  /* 选一条避开近期模板/近期句子的表达（内部原语）；返回 { tpl, line } */
+  function pickFresh(rng, arr, mod, vars, hist) {
+    if (!arr || !arr.length) return { tpl: '', line: '' };
+    var head = (mod || '').slice(0, 2);
+    var dd = head + head; // 「参加」×「参加晨会」→「参加参加」这类叠词直接跳过
+    var pool = arr.filter(function (t) { return !hist.tpls[t] && t.slice(0, 2) !== head; });
+    if (pool.length < 2) pool = arr.filter(function (t) { return t.slice(0, 2) !== head; });
+    if (!pool.length) pool = arr.slice();
+    var order = pickN(rng, pool, pool.length);
+    var best = null, bestS = Infinity;
+    for (var i = 0; i < order.length; i++) {
+      var line = fill(order[i], vars);
+      if (dd && line.indexOf(dd) >= 0) continue;
+      var s = maxSim(line, hist.lines);
+      if (s < bestS) { bestS = s; best = { tpl: order[i], line: line }; }
+      if (bestS < LINE_SIM) break;
+    }
+    return best || { tpl: arr[0], line: fill(arr[0], vars) };
+  }
+
   /* ---------- 模块轮换 ---------- */
   function pickModules(modules, stats, yesterdayMods, rng) {
     var take = modules.length >= 5 ? 3 : (modules.length >= 3 ? 2 : Math.max(1, modules.length));
@@ -116,17 +193,22 @@
     });
     var planMods = pickN(rng, planPool, Math.min(2, planPool.length));
 
+    var hist = historyFor(dateStr, reports);
+    var usedTpls = [];
+
     var vars = { weekday: weekday, dayN: dayN, n: 0 };
     var head = [];
     var headExtra = [config.company, config.jobTitle].filter(Boolean).join(' · ');
     head.push('【实习日报】' + dateStr + ' ' + weekday + (headExtra ? '（' + headExtra + '）' : ''));
     head.push('');
 
-    var opener;
-    if (dow === 1 && Phrases.openersMon.length && rng() < 0.6) opener = choice(rng, Phrases.openersMon);
-    else if (dow === 5 && Phrases.openersFri.length && rng() < 0.6) opener = choice(rng, Phrases.openersFri);
-    else opener = choice(rng, Phrases.openers);
-    head.push(fill(opener, vars));
+    // 开头：周一/周五优先用对应池，同样避开近期用过的
+    var openerPool = Phrases.openers;
+    if (dow === 1 && Phrases.openersMon.length && rng() < 0.6) openerPool = Phrases.openersMon;
+    else if (dow === 5 && Phrases.openersFri.length && rng() < 0.6) openerPool = Phrases.openersFri;
+    var op = takeFresh(rng, openerPool, '', vars, hist);
+    usedTpls.push(op.tpl);
+    head.push(op.line);
 
     // 栏目驱动成文：按 config.sections 的顺序/标题/开关输出，「今日完成」强制保留
     var sections = (config.sections && config.sections.length) ? config.sections : defaultSections();
@@ -150,34 +232,55 @@
         var doneLines = [];
         mods.forEach(function (m, i) {
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
-          var tpl = isActivity ? pickTpl(rng, Phrases.doneActivity, m) : pickTpl(rng, Phrases.done, m);
           vars.n = int(rng, 4, 18);
-          doneLines.push((i + 1) + '. ' + fill(tpl, Object.assign({ module: m }, vars)));
+          var pk = takeFresh(rng, isActivity ? Phrases.doneActivity : Phrases.done, m,
+            Object.assign({ module: m }, vars), hist);
+          usedTpls.push(pk.tpl);
+          doneLines.push((i + 1) + '. ' + pk.line);
         });
         if (extra && extra.trim()) {
           doneLines.push((mods.length + 1) + '. ' + extra.trim().replace(/。$/, '') + '。');
         }
         emit(title, doneLines);
       } else if (sec.key === 'gains') {
-        var gl = [fill(pickTpl(rng, Phrases.gains, mods[0]), { module: mods[0] })];
-        if (rng() < 0.6) gl.push(choice(rng, Phrases.gainsTail));
+        var gm = choice(rng, mods) || mods[0];
+        var g = takeFresh(rng, Phrases.gains, gm, { module: gm }, hist);
+        usedTpls.push(g.tpl);
+        var gl = [g.line];
+        if (rng() < 0.6) {
+          var gt = takeFresh(rng, Phrases.gainsTail, '', {}, hist);
+          usedTpls.push(gt.tpl);
+          gl.push(gt.line);
+        }
         emit(title, gl);
       } else if (sec.key === 'problems') {
         var pl = [];
         if (rng() < 0.65) {
           var pm = choice(rng, mods);
-          problem = fill(pickTpl(rng, Phrases.problems, pm), { module: pm });
+          var pr = takeFresh(rng, Phrases.problems, pm, { module: pm }, hist);
+          usedTpls.push(pr.tpl);
+          problem = pr.line;
           pl.push(problem);
-          pl.push(choice(rng, Phrases.solutions));
+          var so = takeFresh(rng, Phrases.solutions, '', {}, hist);
+          usedTpls.push(so.tpl);
+          pl.push(so.line);
         } else {
-          pl.push(choice(rng, Phrases.noProblem));
+          var np = takeFresh(rng, Phrases.noProblem, '', {}, hist);
+          usedTpls.push(np.tpl);
+          pl.push(np.line);
         }
         emit(title, pl);
       } else if (sec.key === 'plans') {
         var pp = planMods.map(function (m, i) {
-          return (i + 1) + '. ' + fill(pickTpl(rng, Phrases.plans, m), { module: m });
+          var pk2 = takeFresh(rng, Phrases.plans, m, { module: m }, hist);
+          usedTpls.push(pk2.tpl);
+          return (i + 1) + '. ' + pk2.line;
         });
-        if (rng() < 0.5) pp.push(choice(rng, Phrases.planTail));
+        if (rng() < 0.5) {
+          var pt = takeFresh(rng, Phrases.planTail, '', {}, hist);
+          usedTpls.push(pt.tpl);
+          pp.push(pt.line);
+        }
         emit(title, pp);
       }
     });
@@ -189,10 +292,14 @@
     var used = {};
     var guard = 0;
     while (charCount(text) < min && guard < 16) {
-      var avail = Phrases.fillers.filter(function (f) { return !used[f]; });
+      var avail = Phrases.fillers.filter(function (f) {
+        return !used[f] && !hist.tpls[f] && maxSim(f, hist.lines) < LINE_SIM;
+      });
+      if (!avail.length) avail = Phrases.fillers.filter(function (f) { return !used[f]; });
       if (!avail.length) break;
       var s = choice(rng, avail);
       used[s] = 1;
+      usedTpls.push(s);
       text += '\n' + s;
       guard++;
     }
@@ -202,7 +309,8 @@
       text: text,
       modules: mods,
       extra: extra ? extra.trim() : '',
-      problem: problem
+      problem: problem,
+      tpls: usedTpls
     };
   }
 
@@ -212,6 +320,8 @@
     if (!config || !config.modules || !config.modules.length) return null;
     var base = (opts && opts.saltBase) || 0;
     var prev = lastNDates(reports, dateStr, 3).map(function (d) { return reports[d].text || ''; });
+    var today = reports[dateStr] && reports[dateStr].text ? [reports[dateStr].text] : [];
+    prev = prev.concat(today); // 换一版时连当天旧稿一起比对
     var best = null, bestScore = Infinity;
     for (var salt = base; salt < base + 10; salt++) {
       var r = buildDaily(dateStr, config, reports, stats, salt, extra);

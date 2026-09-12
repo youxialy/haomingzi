@@ -120,7 +120,7 @@
       if (!r) return;
       Store.data.reports[ds] = {
         date: ds, text: r.text, modules: r.modules,
-        extra: '', problem: r.problem, statCounted: true
+        extra: '', problem: r.problem, tpls: r.tpls || [], statCounted: true
       };
       r.modules.forEach(function (m) {
         var s = Store.data.moduleStats[m] || { count: 0, lastDate: '' };

@@ -66,7 +66,7 @@ days.forEach(function (ds, idx) {
   if (!r) { failures.push('生成失败 ' + ds); return; }
 
   // 落库（模拟 editor.js 行为）
-  reports[ds] = { date: ds, text: r.text, modules: r.modules, extra: r.extra, problem: r.problem, submitted: true };
+  reports[ds] = { date: ds, text: r.text, modules: r.modules, extra: r.extra, problem: r.problem, tpls: r.tpls || [], submitted: true };
   r.modules.forEach(function (m) {
     var s = stats[m] || { count: 0, lastDate: '' };
     s.count++; s.lastDate = ds;
@@ -138,7 +138,7 @@ var smallOk = true;
 for (var i4 = 0; i4 < 4; i4++) {
   var r2 = Generator.generateDaily(days[i4], smallCfg, sReports, sStats, '');
   if (!r2) { smallOk = false; break; }
-  sReports[days[i4]] = { date: days[i4], text: r2.text, modules: r2.modules, extra: '', problem: r2.problem };
+  sReports[days[i4]] = { date: days[i4], text: r2.text, modules: r2.modules, extra: '', problem: r2.problem, tpls: r2.tpls || [] };
 }
 check(smallOk, '2 个模块时连续 4 天生成不崩溃');
 
@@ -174,6 +174,49 @@ var base8 = Generator.generateDaily('2026-09-14', config, {}, {}, '');
 var variant8 = Generator.generateDaily('2026-09-14', config, {}, {}, '', { saltBase: 4321 });
 check(base8 && variant8 && base8.text !== variant8.text, '同一天不同盐值产出不同版本');
 check(Generator.charCount(variant8.text) >= 300, '换一版后字数仍达标');
+
+console.log('\n===== 测试 9：跨天句子防重复 =====');
+// 提取正文内容句（去抬头/栏目行/序号），检查同一句不会在 4 天内再次出现
+var dayIdx = {};
+days.forEach(function (d, i) { dayIdx[d] = i; });
+var seen = {}; // 句子 -> 出现过的日期下标数组
+var worstDup = null;
+days.forEach(function (d) {
+  reports[d].text.split('\n').forEach(function (raw) {
+    var s = raw.trim();
+    if (s.length < 8 || s.charAt(0) === '【' || /^[一二三四五六七八九十]、/.test(s)) return;
+    s = s.replace(/^\d+\.\s*/, '');
+    if (!seen[s]) seen[s] = [];
+    seen[s].forEach(function (prev) {
+      var gap = dayIdx[d] - prev;
+      if (gap <= 3 && (!worstDup || gap < worstDup.gap)) worstDup = { gap: gap, line: s };
+    });
+    seen[s].push(dayIdx[d]);
+  });
+});
+check(!worstDup, '同一句话不会在 3 天内重复出现' + (worstDup ? '——间隔 ' + worstDup.gap + ' 天重复：「' + worstDup.line.slice(0, 30) + '…」' : ''));
+var todayRec = Generator.buildDaily('2026-09-21', config, reports, stats, 0, '');
+check(Array.isArray(todayRec.tpls) && todayRec.tpls.length > 0, '生成结果携带句式使用记录（tpls，共 ' + (todayRec.tpls ? todayRec.tpls.length : 0) + ' 条）');
+
+// 同一篇内部：任意两句内容句相似度不得过高（防「只换模块名不换句式」）
+var worstPair = null;
+days.forEach(function (d) {
+  var ls = [];
+  reports[d].text.split('\n').forEach(function (raw) {
+    var s = raw.trim();
+    if (s.length < 8 || s.charAt(0) === '【' || /^[一二三四五六七八九十]、/.test(s)) return;
+    ls.push(s.replace(/^\d+\.\s*/, ''));
+  });
+  for (var a = 0; a < ls.length; a++) {
+    for (var b = a + 1; b < ls.length; b++) {
+      var sim2 = Generator.similarity(ls[a], ls[b]);
+      if (sim2 >= 0.85 && (!worstPair || sim2 > worstPair.sim)) {
+        worstPair = { sim: sim2, a: ls[a].slice(0, 18), b: ls[b].slice(0, 18), d: d };
+      }
+    }
+  }
+});
+check(!worstPair, '同一篇内不存在句式雷同的两句话' + (worstPair ? '——' + worstPair.d + ' 相似度 ' + worstPair.sim.toFixed(2) + '：「' + worstPair.a + '…」vs「' + worstPair.b + '…」' : ''));
 
 console.log('\n------------------------------------------');
 if (failures.length) {

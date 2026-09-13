@@ -441,6 +441,11 @@
 
     // 面板
     renderDue();
+
+    // PWA：注册 Service Worker（本地 file:// 直接打开时跳过，不影响离线双击用法）
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
   }
 
   /* ============================================================

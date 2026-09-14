@@ -218,6 +218,25 @@ days.forEach(function (d) {
 });
 check(!worstPair, '同一篇内不存在句式雷同的两句话' + (worstPair ? '——' + worstPair.d + ' 相似度 ' + worstPair.sim.toFixed(2) + '：「' + worstPair.a + '…」vs「' + worstPair.b + '…」' : ''));
 
+console.log('\n===== 测试 10：日均事务量（数字围绕基准波动） =====');
+var cfg10 = JSON.parse(JSON.stringify(config));
+cfg10.dailyLoad = 6;
+var nOk = true, nSamples = [];
+for (var i5 = 0; i5 < 10; i5++) {
+  var ds10 = '2026-10-' + String(i5 + 1).padStart(2, '0');
+  var rr = Generator.buildDaily(ds10, cfg10, {}, {}, i5, '');
+  // 提取「今日完成」栏目里的数字（去掉行首序号）
+  var sec = rr.text.split('一、')[1] ? rr.text.split('一、')[1].split('二、')[0] : '';
+  sec.split('\n').forEach(function (raw) {
+    var s = raw.trim().replace(/^\d+\.\s*/, '');
+    (s.match(/\d+/g) || []).forEach(function (x) {
+      var v = parseInt(x, 10);
+      if (v >= 2 && v <= 99) { nSamples.push(v); if (v < 3 || v > 10) nOk = false; }
+    });
+  });
+}
+check(nOk && nSamples.length > 0, 'dailyLoad=6 时事务量全部在 3~10 内（样本 ' + nSamples.length + ' 个：' + nSamples.slice(0, 12).join(',') + '）');
+
 console.log('\n------------------------------------------');
 if (failures.length) {
   console.log('❌ 失败 ' + failures.length + ' 项：');

@@ -152,6 +152,13 @@
     return best || { tpl: arr[0], line: fill(arr[0], vars) };
   }
 
+  // 单日事务量：围绕配置的「日均事务量」上下浮动 ±40%，避免相邻两天 4↔18 的突兀跳跃
+  function dailyN(rng, config) {
+    var base = Number(config && config.dailyLoad) > 0 ? Number(config.dailyLoad) : 10;
+    var n = Math.round(base * (0.6 + rng() * 0.8));
+    return Math.max(2, Math.min(99, n));
+  }
+
   /* ---------- 模块轮换 ---------- */
   function pickModules(modules, stats, yesterdayMods, rng) {
     var take = modules.length >= 5 ? 3 : (modules.length >= 3 ? 2 : Math.max(1, modules.length));
@@ -232,7 +239,7 @@
         var doneLines = [];
         mods.forEach(function (m, i) {
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
-          vars.n = int(rng, 4, 18);
+          vars.n = dailyN(rng, config);
           var pk = takeFresh(rng, isActivity ? Phrases.doneActivity : Phrases.done, m,
             Object.assign({ module: m }, vars), hist);
           usedTpls.push(pk.tpl);

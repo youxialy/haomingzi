@@ -15,7 +15,7 @@
 <meta property="og:description" content="一次配置岗位，日报一键生成；周报月报实习总结自动汇总。25种岗位模板，数据只存本地，无账号无上传。">
 <meta property="og:url" content="https://youxialy.github.io/haomingzi/">
 <meta property="og:image" content="https://youxialy.github.io/haomingzi/icons/icon-512.png">
-<link rel="stylesheet" href="css/style.css?v=2026091303">
+<link rel="stylesheet" href="css/style.css?v=2026091304">
 </head>
 <body>
 
@@ -38,6 +38,14 @@
 <div class="banner" id="setupBanner" hidden>
   <span>👋 第一次使用？先花 5 分钟完成岗位配置，之后每天 30 秒一键生成报告。</span>
   <button class="btn primary sm" id="bannerSetupBtn">去配置</button>
+</div>
+
+<div class="banner" id="installBanner" hidden>
+  <span id="installBannerText">📲 把本工具安装到手机桌面，点开即用、离线也能看。</span>
+  <span style="display:flex;gap:8px;flex-shrink:0">
+    <button class="btn primary sm" id="installBtn">立即安装</button>
+    <button class="btn sm" id="installDismiss">暂不</button>
+  </span>
 </div>
 
 <div class="due-strip-wrap" id="dueStripWrap" hidden>
@@ -209,6 +217,7 @@
         <label>实习开始日期 <input type="date" id="cfgStart"></label>
         <label>实习结束日期 <input type="date" id="cfgEnd"></label>
         <label>日报字数下限 <input type="number" id="cfgMinWords" value="300" min="100" step="50"></label>
+        <label>日均事务量（每项工作约处理几件） <input type="number" id="cfgDailyLoad" value="10" min="2" max="99" step="1"></label>
         <label>公司名称（可选） <input type="text" id="cfgCompany" placeholder="用于报告抬头"></label>
         <label>岗位名称（可选） <input type="text" id="cfgJobTitle" placeholder="如：电商客服"></label>
         <label>周报批次截止提醒
@@ -252,12 +261,18 @@
 
     <div class="card">
       <h3 class="card-title">数据备份</h3>
-      <p class="hint">所有数据只保存在你自己的浏览器里（无账号、无上传）。换电脑 / 换手机前记得先导出。</p>
+      <p class="hint">所有数据只保存在你自己的浏览器里（无账号、无上传）。换手机 / 换电脑前记得先备份。</p>
       <div class="actions">
         <button class="btn" id="exportBtn">⬇ 导出备份</button>
         <label class="btn file-btn">⬆ 导入备份<input type="file" id="importFile" accept=".json" hidden></label>
+        <button class="btn" id="copyCodeBtn">📋 复制备份码</button>
         <button class="btn danger" id="clearBtn">🗑 清空全部数据</button>
       </div>
+      <div class="add-row mt">
+        <input type="text" id="backupCodeIn" placeholder="换机迁移：把备份码（一串文本）粘贴到这里，点「恢复」。备份码可微信发给自己保存">
+        <button class="btn sm" id="restoreCodeBtn">恢复</button>
+      </div>
+      <p class="hint mt">「复制备份码」会把全部数据变成一串文本——微信发送给朋友（选自己）或存进备忘录，新设备粘贴点「恢复」即可，不必折腾文件。</p>
     </div>
 
     <div class="card boundary">
@@ -287,15 +302,26 @@
   </div>
 </div>
 
+<div class="modal-mask" id="installMask" hidden>
+  <div class="modal-card" role="dialog" aria-label="安装到桌面">
+    <h3>📲 安装到手机桌面</h3>
+    <p class="hint">装好后桌面出现「实习日报」图标，点开直接全屏使用，和 App 一样；没网也能打开。</p>
+    <div class="fb-row"><span><b>iPhone / iPad</b><span class="hint"><br>用 Safari 打开本页 → 点底部「分享」按钮 → 选「添加到主屏幕」→ 右上角「添加」</span></span></div>
+    <div class="fb-row"><span><b>安卓手机</b><span class="hint"><br>浏览器菜单（右上「⋮」）→ 「添加到主屏幕」或「安装应用」→ 确认</span></span></div>
+    <div class="fb-row"><span><b>从微信 / QQ 打开的</b><span class="hint"><br>先点右上角「···」→ 选「在浏览器打开」，再按上面步骤操作</span></span></div>
+    <div class="modal-ops"><button class="btn sm" id="installHelpClose">我知道了</button></div>
+  </div>
+</div>
+
 <div id="printSheet"></div>
 <div id="toast" hidden></div>
 
-<script src="js/store.js?v=2026091303"></script>
-<script src="js/phrases.js?v=2026091303"></script>
-<script src="js/generator.js?v=2026091303"></script>
-<script src="js/composer.js?v=2026091303"></script>
-<script src="js/editor.js?v=2026091303"></script>
-<script src="js/calendar.js?v=2026091303"></script>
-<script src="js/app.js?v=2026091303"></script>
+<script src="js/store.js?v=2026091304"></script>
+<script src="js/phrases.js?v=2026091304"></script>
+<script src="js/generator.js?v=2026091304"></script>
+<script src="js/composer.js?v=2026091304"></script>
+<script src="js/editor.js?v=2026091304"></script>
+<script src="js/calendar.js?v=2026091304"></script>
+<script src="js/app.js?v=2026091304"></script>
 </body>
 </html>

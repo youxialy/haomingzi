@@ -228,6 +228,7 @@
     $('cfgStart').value = cfg.startDate || '';
     $('cfgEnd').value = cfg.endDate || '';
     $('cfgMinWords').value = cfg.minWords || 300;
+    $('cfgDailyLoad').value = cfg.dailyLoad || 10;
     $('cfgCompany').value = cfg.company || '';
     $('cfgJobTitle').value = cfg.jobTitle || '';
     $('cfgWeeklyDue').value = cfg.weeklyDue || '';
@@ -246,6 +247,7 @@
       startDate: $('cfgStart').value || null,
       endDate: $('cfgEnd').value || null,
       minWords: parseInt($('cfgMinWords').value, 10) || 300,
+      dailyLoad: parseInt($('cfgDailyLoad').value, 10) || 10,
       company: $('cfgCompany').value.trim(),
       jobTitle: $('cfgJobTitle').value.trim(),
       weeklyDue: $('cfgWeeklyDue').value,
@@ -332,6 +334,27 @@
 
   function bindBackup() {
     $('exportBtn').addEventListener('click', exportBackup);
+    $('copyCodeBtn').addEventListener('click', function () {
+      var code = 'IR1:' + btoa(unescape(encodeURIComponent(Store.exportJSON())));
+      Editor.copyText(code, '备份码已复制：微信发给自己或存备忘录，新设备粘贴恢复');
+    });
+    $('restoreCodeBtn').addEventListener('click', function () {
+      var v = $('backupCodeIn').value.trim();
+      if (!v) { toast('先把备份码粘贴到输入框'); return; }
+      var json;
+      try {
+        json = v.indexOf('IR1:') === 0 ? decodeURIComponent(escape(atob(v.slice(4)))) : v;
+      } catch (e) { toast('恢复失败：备份码格式不对'); return; }
+      Store.importJSON(json, function () {
+        applyTheme();
+        loadConfigToWizard();
+        Editor.renderDaily(); Editor.renderAggStat(); Editor.renderSummaryStat();
+        Calendar.render(); Calendar.renderTodos();
+        renderDue(); renderPhrases();
+        $('backupCodeIn').value = '';
+        toast('恢复成功 ✓');
+      }, function () { toast('恢复失败：备份码不完整或已损坏'); });
+    });
     $('importFile').addEventListener('change', function () {
       var f = this.files[0];
       if (!f) return;
@@ -424,6 +447,27 @@
       toast('已收藏');
     });
 
+    // PWA 安装引导
+    $('installBtn').addEventListener('click', function () {
+      if (deferredInstall) {
+        deferredInstall.prompt();
+        deferredInstall = null;
+        $('installBanner').hidden = true;
+      } else {
+        openInstallHelp();
+      }
+    });
+    $('installDismiss').addEventListener('click', function () {
+      Store.data.settings.installDismissed = true;
+      Store.save();
+      $('installBanner').hidden = true;
+    });
+    $('installHelpClose').addEventListener('click', function () { $('installMask').hidden = true; });
+    $('installMask').addEventListener('click', function (e) {
+      if (e.target === this) this.hidden = true;
+    });
+    maybeShowInstall();
+
     // 备份
     bindBackup();
 
@@ -446,6 +490,33 @@
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(function () {});
     }
+  }
+
+  /* ---------- PWA 安装引导 ---------- */
+  var deferredInstall = null;
+  function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  }
+  function maybeShowInstall() {
+    if (isStandalone() || Store.data.settings.installDismissed) return;
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (deferredInstall) {
+      $('installBannerText').textContent = '📲 把「实习日报一点通」安装到手机桌面，点开即用、离线也能看。';
+      $('installBtn').textContent = '立即安装';
+      $('installBanner').hidden = false;
+    } else if (isIOS && /safari/i.test(navigator.userAgent)) {
+      $('installBannerText').textContent = '📲 想像 App 一样用？添加到主屏幕即可。';
+      $('installBtn').textContent = '怎么装';
+      $('installBanner').hidden = false;
+    }
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredInstall = e;
+    maybeShowInstall();
+  });
+  function openInstallHelp() {
+    $('installMask').hidden = false;
   }
 
   /* ============================================================

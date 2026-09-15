@@ -257,6 +257,7 @@
     Store.save();
     $('setupBanner').hidden = true;
     renderDue();
+    maybeShowInstall(); // 配置完成后，安装横幅可以接班了
     Editor.renderDaily();
     Editor.renderAggStat();
     toast('配置已保存，去「今日日报」一键生成 ✨');
@@ -458,13 +459,21 @@
       }
     });
     $('installDismiss').addEventListener('click', function () {
-      Store.data.settings.installDismissed = true;
+      Store.data.settings.installDismissedAt = Date.now();
       Store.save();
       $('installBanner').hidden = true;
     });
     $('installHelpClose').addEventListener('click', function () { $('installMask').hidden = true; });
     $('installMask').addEventListener('click', function (e) {
       if (e.target === this) this.hidden = true;
+    });
+    $('settingsInstallBtn').addEventListener('click', function () {
+      if (deferredInstall) {
+        deferredInstall.prompt();
+        deferredInstall = null;
+      } else {
+        openInstallHelp();
+      }
     });
     maybeShowInstall();
 
@@ -486,6 +495,9 @@
     // 面板
     renderDue();
 
+    // 从写作指南页跳转过来的反馈请求
+    if (location.hash === '#feedback') openFeedback();
+
     // PWA：注册 Service Worker（本地 file:// 直接打开时跳过，不影响离线双击用法）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(function () {});
@@ -494,17 +506,33 @@
 
   /* ---------- PWA 安装引导 ---------- */
   var deferredInstall = null;
+  var DISMISS_RESHOW_MS = 7 * 864e5; // 点过「暂不」7 天后可再提示
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   }
+  function isIOSLike() {
+    var ua = navigator.userAgent;
+    // 新款 iPad 的 UA 伪装成 Mac，用触点数识别
+    return /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  }
   function maybeShowInstall() {
-    if (isStandalone() || Store.data.settings.installDismissed) return;
-    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isStandalone()) return;
+    // 配置横幅优先：新用户先完成配置，之后再提安装
+    if (!$('setupBanner').hidden) return;
+    // 旧字段迁移：永久「暂不」→ 记时间戳，7 天后可再提示
+    if (Store.data.settings.installDismissed === true) {
+      Store.data.settings.installDismissedAt = Store.data.settings.installDismissedAt || Date.now();
+      delete Store.data.settings.installDismissed;
+      Store.save();
+    }
+    var at = Store.data.settings.installDismissedAt;
+    if (at && Date.now() - at < DISMISS_RESHOW_MS) return;
+    var ua = navigator.userAgent;
     if (deferredInstall) {
       $('installBannerText').textContent = '📲 把「实习日报一点通」安装到手机桌面，点开即用、离线也能看。';
       $('installBtn').textContent = '立即安装';
       $('installBanner').hidden = false;
-    } else if (isIOS && /safari/i.test(navigator.userAgent)) {
+    } else if (isIOSLike() && /safari/i.test(ua)) {
       $('installBannerText').textContent = '📲 想像 App 一样用？添加到主屏幕即可。';
       $('installBtn').textContent = '怎么装';
       $('installBanner').hidden = false;

@@ -42,7 +42,6 @@
   }
   function rngFor(dateStr, salt) { return mulberry32(hashStr(dateStr + '#' + salt)); }
   function choice(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
-  function int(rng, a, b) { return a + Math.floor(rng() * (b - a + 1)); }
   function pickN(rng, arr, n) {
     var c = arr.slice(), out = [];
     while (out.length < n && c.length) out.push(c.splice(Math.floor(rng() * c.length), 1)[0]);

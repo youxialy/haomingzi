@@ -7,22 +7,43 @@
  * 目的是抓「静态检查抓不到、只有运行才暴露」的问题，比如
  * 绑定了不存在的元素、事件回调里抛错、导入后界面渲染炸掉。
  *
- * 依赖 jsdom（装在 WorkBuddy 的隔离 node 工作区），运行前设好：
- *   NODE_PATH=C:/Users/ASUS/.workbuddy/binaries/node/workspace/node_modules
+ * 依赖 jsdom（唯一的可选依赖，其它三套测试零依赖）。找不到时按顺序自己找：
+ *   1) 常规 require('jsdom')
+ *   2) 环境变量 HMZ_JSDOM 指向的 node_modules
+ *   3) 项目内 node_modules
+ *   4) WorkBuddy 的隔离 node 工作区（本机已装）
+ * 全都找不到才跳过。所以直接双击「跑测试.bat」即可，不必手动设 NODE_PATH。
  * ============================================================ */
 var fs = require('fs');
 var path = require('path');
-var JSDOM, VirtualConsole;
-try {
-  var jsdomMod = require('jsdom');
-  JSDOM = jsdomMod.JSDOM;
-  VirtualConsole = jsdomMod.VirtualConsole;
-} catch (e) {
+
+function loadJsdom() {
+  try {
+    return require('jsdom');
+  } catch (e) { /* 继续找 */ }
+  var dirs = [];
+  if (process.env.HMZ_JSDOM) dirs.push(process.env.HMZ_JSDOM);
+  dirs.push(path.join(__dirname, '..', 'node_modules'));
+  dirs.push(path.join(process.cwd(), 'node_modules'));
+  dirs.push('C:/Users/ASUS/.workbuddy/binaries/node/workspace/node_modules');
+  for (var i = 0; i < dirs.length; i++) {
+    var p = path.join(dirs[i], 'jsdom');
+    try {
+      if (fs.existsSync(p)) return require(p);
+    } catch (e) { /* 试下一个 */ }
+  }
+  return null;
+}
+
+var jsdomMod = loadJsdom();
+if (!jsdomMod) {
   console.log('\n[跳过] 没装 jsdom，跳过真机冒烟测试。');
   console.log('      它是唯一的「可选」依赖（其它三套测试不需要任何依赖）。');
   console.log('      想跑的话：npm install jsdom，然后重跑本文件。\n');
   process.exit(0);
 }
+var JSDOM = jsdomMod.JSDOM;
+var VirtualConsole = jsdomMod.VirtualConsole;
 
 var SRC = path.join(__dirname, '..');
 var pass = 0, fail = 0;

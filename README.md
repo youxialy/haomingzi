@@ -93,7 +93,7 @@ intern-report/
 node test/harness.js          # 28 项断言
 node test/draft.test.js       # 23 项断言
 node test/backup.test.js      # 62 项断言
-node test/integration.test.js # 82 项断言（需 npm install jsdom，没装会自动跳过）
+node test/integration.test.js # 82 项断言（自动查找 jsdom，找不到才跳过）
 ```
 
 前三套零依赖，直接在 Node 里跑。

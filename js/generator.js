@@ -47,6 +47,33 @@
     };
   }
   function rngFor(dateStr, salt) { return mulberry32(hashStr(dateStr + '#' + salt)); }
+
+  /* ------------------------------------------------------------
+   * 配置指纹：随机流必须「因岗位而异」，不能只由日期决定。
+   *
+   * 旧实现 rngFor(date, salt) 与配置完全无关 → **同一天生成任何两个岗位，
+   * 拿到的是同一条随机序列**：同一套骨架、同一批池内下标、同一批
+   * 「不含模块名」的句子（开头语 / 今日无异常 / 计划收尾 / 补充说明）。
+   * 实测同一天 28 个岗位两两之间平均 3 行逐字相同——同一个班的同学
+   * 各自交日报，抬头不同、正文却有整段一模一样，查重必命中。
+   *
+   * 把配置指纹混进种子后，同配置同日期仍然完全可复现（"换一版"仍用 salt），
+   * 不同岗位/不同公司/不同模块组合则各自走不同的随机流。
+   * ------------------------------------------------------------ */
+  var CFG_KEY_CACHE = {};
+  function cfgKey(config) {
+    if (!config) return '0';
+    var sig = [
+      config.jobType || '',
+      config.company || '',
+      config.jobTitle || '',
+      (config.modules || []).join('|'),
+      ((config.sections || []).map(function (s) { return (s && s.key) + ':' + ((s && s.title) || ''); })).join('/')
+    ].join('§');
+    if (CFG_KEY_CACHE[sig] === undefined) CFG_KEY_CACHE[sig] = hashStr(sig);
+    return CFG_KEY_CACHE[sig];
+  }
+
   function choice(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
   function pickN(rng, arr, n) {
     var c = arr.slice(), out = [];
@@ -370,7 +397,7 @@
 
   /* ---------- 组装单日日报 ---------- */
   function buildDaily(dateStr, config, reports, stats, salt, extra, ledger) {
-    var rng = rngFor(dateStr, salt);
+    var rng = rngFor(dateStr, salt + '|' + cfgKey(config));
     var d = Store.parse(dateStr);
     var dow = d.getDay();
     var weekday = '星期' + '日一二三四五六'[dow];
@@ -544,22 +571,47 @@
   }
 
   /* ---------- 对外入口：带防雷同重试；opts.saltBase 用于「换一版」 ---------- */
+  // 阈值 0.55 = 「与比对集里任一篇相似度 ≥0.55 就换个 salt 重出一版」，阈值越低越严格。
+  //
+  // 比对集就取「近 7 天 + 当天旧稿」，**不要再动它**——两种"加强"方案都实测过，都不划算：
+  //   · 窗口 7 → 30 天：120 天验收语料上最大篇对 0.661→0.665、≥0.5 篇对 323→304（噪声级），
+  //     代价是单日 6.8 ms → 17 ms、31 天批量 182 ms → 547 ms（3 倍）。
+  //   · 改成「同骨架定向比对」（同骨架的篇才最像，实测 top12 里 11 对同骨架）：
+  //     最大篇对降到 0.653，但 ≥0.5 篇对反而升到 329、单日 33.5 ms（5 倍）——
+  //     换掉一版会与"比对集之外"的其它篇变像，属于打地鼠。
+  // 结论：篇级重试只负责挡住"近期明显撞车"，更远的雷交给①全周期台账②30 天池周期③6 天骨架轮换。
   var SIM_THRESHOLD = 0.55;
-  var COMPARE_DAYS = 7;   // 整篇比对范围：最近 7 天（旧版是 3 天，"7 天前那篇"根本不在比较集里）
+  var COMPARE_DAYS = 7;
+
+  /* 相似度预编译：比对集里每篇的二元组集合只算一次、新稿每次只算一次。
+   * 朴素写法是每次 similarity(新稿, 老稿) 两边都重算，10 次重试 × 8 篇 = 80 次重复分词。 */
+  function prepBigrams(t) {
+    var g = bigrams(t), set = {};
+    for (var i = 0; i < g.length; i++) set[g[i]] = 1;
+    return { g: g, set: set };
+  }
+  function simPrepped(a, b) {
+    if (!a.g.length || !b.g.length) return 0;
+    var inter = 0;
+    for (var i = 0; i < a.g.length; i++) if (b.set[a.g[i]]) inter++;
+    return inter / Math.min(a.g.length, b.g.length);
+  }
+
   function generateDaily(dateStr, config, reports, stats, extra, opts) {
     if (!config || !config.modules || !config.modules.length) return null;
     var base = (opts && opts.saltBase) || 0;
     var ledger = makeLedger(reports, dateStr);   // 全周期台账每次生成只建一次
     var prev = lastNDates(reports, dateStr, COMPARE_DAYS).map(function (d) { return reports[d].text || ''; });
     if (reports[dateStr] && reports[dateStr].text) prev = prev.concat([reports[dateStr].text]);
+    var prevPrep = prev.map(prepBigrams);
     var best = null, bestScore = Infinity;
     for (var salt = base; salt < base + 10; salt++) {
       var r = buildDaily(dateStr, config, reports, stats, salt, extra, ledger);
-      var mx = 0;
-      prev.forEach(function (t) {
-        var s = similarity(r.text, t);
+      var mine = prepBigrams(r.text), mx = 0;
+      for (var i = 0; i < prevPrep.length; i++) {
+        var s = simPrepped(mine, prevPrep[i]);
         if (s > mx) mx = s;
-      });
+      }
       if (mx < SIM_THRESHOLD) return r;
       if (mx < bestScore) { bestScore = mx; best = r; }
     }

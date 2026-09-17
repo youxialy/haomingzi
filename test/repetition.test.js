@@ -364,6 +364,82 @@ section('M8 聚合稿：骨架轮换 + 周报之间不雷同 + 问题段不照�
 })();
 
 /* ============================================================
+ * M9 跨岗位隔离（随机流必须依赖配置，不能只依赖日期）
+ *
+ * 背景：旧实现 rngFor(dateStr, salt) 与配置完全无关 → 同一天生成任何两个岗位
+ * 拿到同一条随机序列，正文里「不含模块名」的句子（开头语 / 今日无异常 /
+ * 计划收尾 / 补充说明）逐字相同。实测 28 个岗位两两平均 3 行逐字相同，
+ * 掩名相似度 0.724，最大 0.990 —— 同一个班各自交日报会被查重命中。
+ * ============================================================ */
+section('M9 跨岗位隔离');
+(function () {
+  var jobs = Object.keys(Phrases.jobTypes);
+  var out = {};
+  jobs.forEach(function (jt) {
+    var j = Phrases.jobTypes[jt];
+    var cfg = {
+      jobType: jt, modules: j.modules.slice(), startDate: '2026-09-07',
+      minWords: 300, dailyLoad: 10, company: '某某公司', jobTitle: j.name
+    };
+    var rep = {}, st = {}, last = '';
+    for (var i = 0; i < 5; i++) {
+      var d = fmt(addDays(corpus.base, i)), r = Generator.generateDaily(d, cfg, rep, st, '');
+      rep[d] = { date: d, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+      last = d;
+      r.modules.forEach(function (m) { var s = st[m] || { count: 0 }; s.count++; st[m] = s; });
+    }
+    out[jt] = rep[last].text;
+  });
+
+  // 正文行（去掉抬头/栏目标题/条目符号）
+  function bodyLines(t) {
+    return Generator.contentLines(t);
+  }
+  var sameCnt = [], nLines = bodyLines(out[jobs[0]]).length;
+  for (var i = 0; i < jobs.length; i++) {
+    for (var j = i + 1; j < jobs.length; j++) {
+      var A = bodyLines(out[jobs[i]]), B = bodyLines(out[jobs[j]]), c = 0;
+      A.forEach(function (s) { if (B.indexOf(s) >= 0) c++; });
+      sameCnt.push(c);
+    }
+  }
+  var sameMean = mean(sameCnt), sameMax = Math.max.apply(null, sameCnt);
+  ok(sameMean / nLines < 0.05,
+    '同一天跨岗位逐字相同行占比 ' + pct(sameMean / nLines) + ' < 5%',
+    '平均 ' + sameMean.toFixed(2) + ' 行 / 共 ' + nLines + ' 行，最多 ' + sameMax + ' 行（旧版 3.00 行 / 33.3%）');
+
+  // 掩名后跨岗位相似度：把每个岗位的模块名统一替换成 «M»，公司名替换为 «C»
+  function mask(t) {
+    var s = t;
+    jobs.forEach(function (jt) {
+      Phrases.jobTypes[jt].modules.forEach(function (m) { s = s.split(m).join('«M»'); });
+    });
+    return s.split('某某公司').join('«C»').replace(/\d+/g, '#');
+  }
+  var vals = [], mx = 0;
+  for (var p = 0; p < jobs.length; p++) {
+    for (var q = p + 1; q < jobs.length; q++) {
+      var s = sim(mask(out[jobs[p]]), mask(out[jobs[q]]));
+      vals.push(s); if (s > mx) mx = s;
+    }
+  }
+  var m = mean(vals);
+  ok(m < 0.55, '跨岗位掩名相似度均值 ' + m.toFixed(3) + ' < 0.55', '最大 ' + mx.toFixed(3) + '（旧版 均值 0.724 / 最大 0.990）');
+  ok(mx < 0.80, '跨岗位掩名相似度最大 ' + mx.toFixed(3) + ' < 0.80', '（旧版 0.990）');
+
+  // 骨架抬头不因岗位而「全都撞在同一天同一套」
+  var skels = {};
+  jobs.forEach(function (jt) {
+    var first = out[jt].split('\n')[0];
+    var d = Generator.detectSkeleton(first);
+    var id = d ? d.id : '?';
+    skels[id] = (skels[id] || 0) + 1;
+  });
+  var kinds = Object.keys(skels).length;
+  ok(kinds >= 3, '同一天不同岗位至少用到 ' + kinds + ' 套不同骨架（≥3）', JSON.stringify(skels));
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

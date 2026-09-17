@@ -108,19 +108,25 @@ check(reports[days[3]].text.indexOf('消防安全演练') >= 0, '特殊事项已
 console.log('\n===== 测试 2：周报聚合（2026-09-07 ~ 09-13） =====');
 var weekly = Composer.aggregate('weekly', '2026-09-07', '2026-09-13', config, reports);
 check(!!weekly && weekly.count === 7, '7 篇日报全部聚合（count=' + (weekly && weekly.count) + '）');
-check(weekly.text.indexOf('【实习周报】2026-09-07 ~ 2026-09-13（实习第1周）') === 0, '周报抬头与批次号正确');
+var wkHead = weekly.text.split('\n')[0];
+check(wkHead.indexOf('2026-09-07 ~ 2026-09-13') >= 0 && wkHead.indexOf('实习第1周') >= 0,
+  '周报抬头含起止日期与批次号（版式为 6 套轮换，不再固定前缀）', wkHead);
 check(weekly.text.indexOf('消防安全演练') >= 0, '特殊事项进入周报「其他专项工作」');
-check(weekly.text.indexOf('四、下周工作计划') > 0, '包含下周计划章节');
+check(/下[周月]工作计划/.test(weekly.text), '包含下周期计划章节（章节编号随骨架变化）');
 
 console.log('\n===== 测试 3：月报聚合（2026-09-01 ~ 09-30） =====');
 var monthly = Composer.aggregate('monthly', '2026-09-01', '2026-09-30', config, reports);
 check(!!monthly && monthly.count === 14, '14 篇日报全部聚合（count=' + (monthly && monthly.count) + '）');
-check(monthly.text.indexOf('【实习月报】2026-09-01 ~ 2026-09-30（2026-09）') === 0, '月报抬头正确');
+var moHead = monthly.text.split('\n')[0];
+check(moHead.indexOf('2026-09-01 ~ 2026-09-30') >= 0 && moHead.indexOf('（2026-09）') >= 0,
+  '月报抬头含起止日期与月份', moHead);
 
 console.log('\n===== 测试 4：实习总结 =====');
 var summary = Composer.internshipSummary(config, reports);
 check(!!summary && summary.count === 14, '总结汇总全部日报（count=' + (summary && summary.count) + '）');
-check(summary.text.indexOf('一、实习概况') > 0 && summary.text.indexOf('五、结语') > 0, '包含完整五章结构');
+var sumNeed = ['实习概况', '主要工作内容', '收获与成长', '不足与改进方向', '结语'];
+check(sumNeed.every(function (t) { return summary.text.indexOf(t) > 0; }), '包含完整五章结构',
+  '缺失：' + sumNeed.filter(function (t) { return summary.text.indexOf(t) < 0; }).join('、'));
 
 console.log('\n===== 测试 5：备份往返（导出→重置→导入） =====');
 var exported = Store.exportJSON();

@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="实习日报一点通 | 每天30秒搞定实习日报·周报·月报">
-<meta property="og:description" content="一次配置岗位，日报一键生成；周报月报实习总结自动汇总。25种岗位模板，数据只存本地，无账号无上传。">
+<meta property="og:description" content="一次配置岗位，日报一键生成；周报月报实习总结自动汇总。28种岗位模板，数据只存本地，无账号无上传。">
 <meta property="og:url" content="https://youxialy.github.io/haomingzi/">
 <meta property="og:image" content="https://youxialy.github.io/haomingzi/icons/icon-512.png">
 <!-- 主题必须在样式表之前定下来，否则深色模式用户每次打开都会先闪一下白屏 -->
@@ -29,14 +29,15 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026091701">
+<link rel="stylesheet" href="css/style.css?v=2026091702">
 </head>
 <body>
+<a class="skip-link" href="#mainContent">跳到主要内容</a>
 
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand">
-      <span class="logo">📋</span>
+      <span class="logo" aria-hidden="true">📋</span>
       <div class="brand-text">
         <h1>实习日报一点通</h1>
         <p>日报 · 周报 · 月报 · 实习总结，一键生成</p>
@@ -44,10 +45,16 @@
     </div>
     <div class="topbar-actions">
       <a class="btn ghost" href="guide.html">写作指南</a>
-      <button class="btn ghost" id="themeBtn" title="切换深色模式">🌙</button>
+      <button class="btn ghost" id="themeBtn" aria-label="切换深色模式" title="切换深色模式">🌙</button>
     </div>
   </div>
 </header>
+
+<!-- 数据安全提示（保存失败 / 备份码过大 / 导入异常），默认隐藏 -->
+<div class="banner warn" id="noticeBanner" hidden role="alert">
+  <span id="noticeText"></span>
+  <button class="btn sm" id="noticeClose">知道了</button>
+</div>
 
 <div class="banner" id="setupBanner" hidden>
   <span>👋 第一次使用？先花 5 分钟完成岗位配置，之后每天 30 秒一键生成报告。</span>
@@ -66,27 +73,27 @@
   <div class="due-strip" id="dueStrip"></div>
 </div>
 
-<nav class="tabs" id="tabs">
-  <button class="tab active" data-tab="daily">今日日报</button>
-  <button class="tab" data-tab="aggregate">周报月报</button>
-  <button class="tab" data-tab="summary">实习总结</button>
-  <button class="tab" data-tab="calendar">日历·待办</button>
-  <button class="tab" data-tab="phrases">素材库</button>
-  <button class="tab" data-tab="settings">设置</button>
+<nav class="tabs" id="tabs" role="tablist" aria-label="功能页签">
+  <button class="tab active" role="tab" id="tabbtn-daily" aria-selected="true" aria-controls="tab-daily" data-tab="daily">今日日报</button>
+  <button class="tab" role="tab" id="tabbtn-aggregate" aria-selected="false" aria-controls="tab-aggregate" data-tab="aggregate">周报月报</button>
+  <button class="tab" role="tab" id="tabbtn-summary" aria-selected="false" aria-controls="tab-summary" data-tab="summary">实习总结</button>
+  <button class="tab" role="tab" id="tabbtn-calendar" aria-selected="false" aria-controls="tab-calendar" data-tab="calendar">日历·待办</button>
+  <button class="tab" role="tab" id="tabbtn-phrases" aria-selected="false" aria-controls="tab-phrases" data-tab="phrases">素材库</button>
+  <button class="tab" role="tab" id="tabbtn-settings" aria-selected="false" aria-controls="tab-settings" data-tab="settings">设置</button>
 </nav>
 
-<main class="container">
+<main class="container" id="mainContent">
 
   <!-- ============ 今日日报 ============ -->
-  <section class="panel active" id="tab-daily">
+  <section class="panel active" id="tab-daily" role="tabpanel" aria-labelledby="tabbtn-daily" tabindex="-1">
     <div class="card date-card">
       <div class="date-nav">
         <button class="btn ghost sm" id="prevDay">‹ 前一天</button>
-        <input type="date" id="dateInput" class="date-input">
+        <input type="date" id="dateInput" class="date-input" aria-label="选择要编辑的日报日期">
         <button class="btn ghost sm" id="nextDay">后一天 ›</button>
       </div>
-      <div class="stat-line" id="dailyStat"></div>
-      <label class="field-label">今日特殊事项（可选，生成时合并进「今日完成」）</label>
+      <div class="stat-line" id="dailyStat" aria-live="polite"></div>
+      <label class="field-label" for="extraInput">今日特殊事项（可选，生成时合并进「今日完成」）</label>
       <input type="text" id="extraInput" placeholder="例如：参加了消防演练 / 协助月度盘点">
       <div class="actions">
         <button class="btn primary" id="genBtn">✨ 生成日报</button>
@@ -99,29 +106,29 @@
     </div>
     <div class="card editor-card">
       <div class="editor-head"><span id="wordCount">0 字</span><span class="hint" id="wordTarget"></span></div>
-      <div class="draft-hint" id="draftHint" hidden></div>
-      <textarea id="reportEditor" rows="18" placeholder="点击「✨ 生成日报」自动产出全文，也可以直接手写或修改生成结果…"></textarea>
+      <div class="draft-hint" id="draftHint" hidden role="status"></div>
+      <textarea id="reportEditor" rows="18" aria-label="日报正文编辑器" placeholder="点击「✨ 生成日报」自动产出全文，也可以直接手写或修改生成结果…"></textarea>
     </div>
   </section>
 
   <!-- ============ 周报月报 ============ -->
-  <section class="panel" id="tab-aggregate">
+  <section class="panel" id="tab-aggregate" role="tabpanel" aria-labelledby="tabbtn-aggregate" tabindex="-1">
     <div class="card">
       <div class="agg-controls">
-        <div class="seg" id="aggType">
+        <div class="seg" id="aggType" role="group" aria-label="报告类型">
           <button class="active" data-type="weekly">周报</button>
           <button data-type="monthly">月报</button>
         </div>
-        <div class="seg ghost-seg" id="rangePicks">
+        <div class="seg ghost-seg" id="rangePicks" role="group" aria-label="时间范围">
           <button class="active" data-range="this">本期</button>
           <button data-range="last">上期</button>
           <button data-range="custom">自定义</button>
         </div>
         <div class="custom-range" id="customRange" hidden>
-          <input type="date" id="aggFrom"> <span>~</span> <input type="date" id="aggTo">
+          <input type="date" id="aggFrom" aria-label="自定义起始日期"> <span aria-hidden="true">~</span> <input type="date" id="aggTo" aria-label="自定义结束日期">
         </div>
       </div>
-      <div class="stat-line" id="aggStat"></div>
+      <div class="stat-line" id="aggStat" aria-live="polite"></div>
       <div class="actions">
         <button class="btn primary" id="aggGenBtn">✨ 生成草稿</button>
         <button class="btn" id="aggCopyBtn">📋 复制</button>
@@ -131,8 +138,8 @@
       <p class="hint">按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报；每个范围各留一份草稿，切来切去也不丢。</p>
     </div>
     <div class="card editor-card">
-      <div class="draft-hint" id="aggDraftHint" hidden></div>
-      <textarea id="aggEditor" rows="22" placeholder="选择类型和范围后点击「✨ 生成草稿」——自动汇总区间内的日报内容…"></textarea>
+      <div class="draft-hint" id="aggDraftHint" hidden role="status"></div>
+      <textarea id="aggEditor" rows="22" aria-label="周报月报草稿编辑器" placeholder="选择类型和范围后点击「✨ 生成草稿」——自动汇总区间内的日报内容…"></textarea>
     </div>
     <div class="card" id="savedCard" hidden>
       <h3 class="card-title">留档记录</h3>
@@ -141,11 +148,11 @@
   </section>
 
   <!-- ============ 实习总结 ============ -->
-  <section class="panel" id="tab-summary">
+  <section class="panel" id="tab-summary" role="tabpanel" aria-labelledby="tabbtn-summary" tabindex="-1">
     <div class="card">
       <h3 class="card-title">实习总结（学习通「总结」入口提交）</h3>
       <p class="hint">汇总实习期间全部日报，生成完整实习总结：概况 / 主要工作 / 收获成长 / 不足与改进 / 结语。注意学校设定的总结提交时间范围，过期无法提交。</p>
-      <div class="stat-line" id="sumStat"></div>
+      <div class="stat-line" id="sumStat" aria-live="polite"></div>
       <div class="actions">
         <button class="btn primary" id="sumGenBtn">✨ 生成实习总结</button>
         <button class="btn" id="sumCopyBtn">📋 复制</button>
@@ -153,18 +160,18 @@
       </div>
     </div>
     <div class="card editor-card">
-      <div class="draft-hint" id="sumDraftHint" hidden></div>
-      <textarea id="sumEditor" rows="24" placeholder="积累一段时间的日报后，点击「✨ 生成实习总结」自动汇总全文…"></textarea>
+      <div class="draft-hint" id="sumDraftHint" hidden role="status"></div>
+      <textarea id="sumEditor" rows="24" aria-label="实习总结编辑器" placeholder="积累一段时间的日报后，点击「✨ 生成实习总结」自动汇总全文…"></textarea>
     </div>
   </section>
 
   <!-- ============ 日历·待办 ============ -->
-  <section class="panel" id="tab-calendar">
+  <section class="panel" id="tab-calendar" role="tabpanel" aria-labelledby="tabbtn-calendar" tabindex="-1">
     <div class="card cal-card">
       <div class="cal-head">
-        <button class="btn ghost sm" id="calPrev">‹</button>
+        <button class="btn ghost sm" id="calPrev" aria-label="上一个月">‹</button>
         <h2 id="calTitle"></h2>
-        <button class="btn ghost sm" id="calNext">›</button>
+        <button class="btn ghost sm" id="calNext" aria-label="下一个月">›</button>
       </div>
       <div class="cal-grid" id="calGrid"></div>
       <div class="cal-legend">
@@ -177,7 +184,7 @@
         <button class="btn sm" id="backfillBtn">⚡ 批量补写缺失日报</button>
       </div>
       <div id="backfillPanel" hidden>
-        <div class="stat-line" id="backfillStat"></div>
+        <div class="stat-line" id="backfillStat" aria-live="polite"></div>
         <div class="backfill-list" id="backfillList"></div>
         <div class="actions">
           <button class="btn primary sm" id="backfillRun">生成所选</button>
@@ -189,7 +196,7 @@
     <div class="card todo-card">
       <h3 class="card-title">今日待办</h3>
       <div class="add-row">
-        <input type="text" id="todoInput" placeholder="添加待办，例如：记得去学习通上班打卡">
+        <input type="text" id="todoInput" aria-label="新待办内容" placeholder="添加待办，例如：记得去学习通上班打卡">
         <button class="btn sm" id="todoAdd">添加</button>
       </div>
       <ul class="todo-list" id="todoList"></ul>
@@ -201,32 +208,32 @@
   </section>
 
   <!-- ============ 素材库 ============ -->
-  <section class="panel" id="tab-phrases">
+  <section class="panel" id="tab-phrases" role="tabpanel" aria-labelledby="tabbtn-phrases" tabindex="-1">
     <div class="card">
       <h3 class="card-title">常用句式素材库</h3>
       <p class="hint">写作没思路时点一点：复制后粘贴到报告里，或直接插入今天的日报末尾。</p>
       <div class="add-row">
-        <select id="phraseCat" class="select"></select>
+        <select id="phraseCat" class="select" aria-label="句式分类"></select>
         <button class="btn sm ghost" id="phraseCatAll">全部</button>
       </div>
       <ul class="phrase-list" id="phraseList"></ul>
       <div class="add-row">
-        <input type="text" id="phraseInput" placeholder="收藏自己的常用句式…">
+        <input type="text" id="phraseInput" aria-label="收藏自己的常用句式" placeholder="收藏自己的常用句式…">
         <button class="btn sm" id="phraseAdd">收藏</button>
       </div>
     </div>
   </section>
 
   <!-- ============ 设置 ============ -->
-  <section class="panel" id="tab-settings">
+  <section class="panel" id="tab-settings" role="tabpanel" aria-labelledby="tabbtn-settings" tabindex="-1">
     <div class="card" id="setupCard">
       <h3 class="card-title">① 选择岗位类型</h3>
-      <div class="job-grid" id="jobGrid"></div>
+      <div class="job-grid" id="jobGrid" role="group" aria-label="岗位类型"></div>
       <h3 class="card-title mt">② 勾选你的真实工作模块</h3>
       <p class="hint">请按实际情况勾选——报告内容的真实性由你负责，工具负责把它们自动写成报告。</p>
-      <div class="module-box" id="moduleBox"></div>
+      <div class="module-box" id="moduleBox" role="group" aria-label="工作模块"></div>
       <div class="add-row">
-        <input type="text" id="customModule" placeholder="添加自定义模块，如：仓库盘点">
+        <input type="text" id="customModule" aria-label="自定义工作模块" placeholder="添加自定义模块，如：仓库盘点">
         <button class="btn sm" id="moduleAdd">添加</button>
       </div>
       <h3 class="card-title mt">③ 实习信息（对照学习通实习计划里的起止时间）</h3>
@@ -278,18 +285,20 @@
 
     <div class="card">
       <h3 class="card-title">数据备份</h3>
-      <p class="hint">所有数据只保存在你自己的浏览器里（无账号、无上传）。换手机 / 换电脑前记得先备份。</p>
+      <p class="hint">所有数据只保存在你自己的浏览器里（无账号、无上传）。<b>换手机、换电脑、清理浏览器数据前必须先备份</b>，否则数据找不回来。</p>
+      <p class="hint" id="backupHint" aria-live="polite"></p>
       <div class="actions">
-        <button class="btn" id="exportBtn">⬇ 导出备份</button>
-        <label class="btn file-btn">⬆ 导入备份<input type="file" id="importFile" accept=".json" hidden></label>
+        <button class="btn" id="exportBtn">⬇ 导出备份文件</button>
+        <label class="btn file-btn">⬆ 导入备份文件<input type="file" id="importFile" accept=".json" hidden></label>
         <button class="btn" id="copyCodeBtn">📋 复制备份码</button>
         <button class="btn danger" id="clearBtn">🗑 清空全部数据</button>
       </div>
       <div class="add-row mt">
-        <input type="text" id="backupCodeIn" placeholder="换机迁移：把备份码（一串文本）粘贴到这里，点「恢复」。备份码可微信发给自己保存">
+        <input type="text" id="backupCodeIn" aria-label="粘贴备份码" placeholder="换机迁移：把备份码（一串文本）粘贴到这里，点「恢复」">
         <button class="btn sm" id="restoreCodeBtn">恢复</button>
       </div>
-      <p class="hint mt">「复制备份码」会把全部数据变成一串文本——微信发送给朋友（选自己）或存进备忘录，新设备粘贴点「恢复」即可，不必折腾文件。</p>
+      <p class="hint mt">「复制备份码」会把全部数据压成一串文本——微信发给自己或存进备忘录，新设备粘贴点「恢复」即可，不必折腾文件。<b>数据多时备份码会很长</b>，那种情况请改用「导出备份文件」，可以直接发给微信「文件传输助手」。</p>
+      <p class="hint">粘贴时会自动忽略换行、空格和「第N/M段」这类分段标记，所以分成几条消息发给自己也能恢复。</p>
     </div>
 
     <div class="card">
@@ -315,8 +324,8 @@
 </footer>
 
 <div class="modal-mask" id="feedbackMask" hidden>
-  <div class="modal-card" role="dialog" aria-label="意见反馈">
-    <h3>意见反馈</h3>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="fbTitle" tabindex="-1">
+    <h3 id="fbTitle">意见反馈</h3>
     <p class="hint">哪里不好用、想加什么岗位、有什么建议——都欢迎提，你的一条反馈能让工具更好用一点。</p>
     <div id="fbChannels"></div>
     <div class="modal-ops">
@@ -328,8 +337,8 @@
 </div>
 
 <div class="modal-mask" id="installMask" hidden>
-  <div class="modal-card" role="dialog" aria-label="安装到桌面">
-    <h3>📲 安装到手机桌面</h3>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="installTitle" tabindex="-1">
+    <h3 id="installTitle">📲 安装到手机桌面</h3>
     <p class="hint">装好后桌面出现「实习日报」图标，点开直接全屏使用，和 App 一样；没网也能打开。</p>
     <div class="fb-row"><span><b>iPhone / iPad</b><span class="hint"><br>用 Safari 打开本页 → 点底部「分享」按钮 → 选「添加到主屏幕」→ 右上角「添加」</span></span></div>
     <div class="fb-row"><span><b>安卓手机</b><span class="hint"><br>浏览器菜单（右上「⋮」）→ 「添加到主屏幕」或「安装应用」→ 确认</span></span></div>
@@ -338,15 +347,15 @@
   </div>
 </div>
 
-<div id="printSheet"></div>
-<div id="toast" hidden></div>
+<div id="printSheet" aria-hidden="true"></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="js/store.js?v=2026091701"></script>
-<script src="js/phrases.js?v=2026091701"></script>
-<script src="js/generator.js?v=2026091701"></script>
-<script src="js/composer.js?v=2026091701"></script>
-<script src="js/editor.js?v=2026091701"></script>
-<script src="js/calendar.js?v=2026091701"></script>
-<script src="js/app.js?v=2026091701"></script>
+<script defer src="js/store.js?v=2026091702"></script>
+<script defer src="js/phrases.js?v=2026091702"></script>
+<script defer src="js/generator.js?v=2026091702"></script>
+<script defer src="js/composer.js?v=2026091702"></script>
+<script defer src="js/editor.js?v=2026091702"></script>
+<script defer src="js/calendar.js?v=2026091702"></script>
+<script defer src="js/app.js?v=2026091702"></script>
 </body>
 </html>

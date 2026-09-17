@@ -400,8 +400,15 @@
       var meta = document.createElement('div');
       meta.className = 'saved-meta';
       var kind = it.type === 'weekly' ? '周报' : '月报';
-      meta.innerHTML = '<b>' + kind + '</b> ' + it.from + ' ~ ' + it.to +
-        '<span class="hint">　留档于 ' + (it.createdAt || '').slice(0, 10) + '</span>';
+      // 留档可能来自导入的备份码，字段一律用纯文本写入，不拼 HTML
+      var kindEl = document.createElement('b');
+      kindEl.textContent = kind;
+      meta.appendChild(kindEl);
+      meta.appendChild(document.createTextNode(' ' + (it.from || '') + ' ~ ' + (it.to || '')));
+      var atEl = document.createElement('span');
+      atEl.className = 'hint';
+      atEl.textContent = '　留档于 ' + String(it.createdAt || '').slice(0, 10);
+      meta.appendChild(atEl);
 
       var ops = document.createElement('div');
       ops.className = 'saved-ops';

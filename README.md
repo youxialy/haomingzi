@@ -67,20 +67,59 @@ intern-report/
 ├── guide.html          # 写作指南（SEO 落地页）
 ├── css/style.css       # 全部样式（深色模式 / 移动端 / 打印）
 ├── js/
-│   ├── store.js        # localStorage 数据层 + 备份
+│   ├── store.js        # localStorage 数据层 + 备份码编解码 + 导入校验
 │   ├── phrases.js      # 岗位模块库 + 句式模板数据
 │   ├── generator.js    # 日报生成引擎（轮换/变体/字数/防雷同，纯函数）
 │   ├── composer.js     # 周报/月报/实习总结聚合（纯函数）
 │   ├── editor.js       # 日报/聚合/总结页签交互
 │   ├── calendar.js     # 日历与待办
 │   └── app.js          # 路由/提醒面板/设置向导/素材库/备份
-├── test/harness.js     # 生成引擎自动化测试
+├── sw.js               # Service Worker（页面网络优先，版本化资源缓存优先）
+├── test/
+│   ├── harness.js          # 生成引擎测试（无依赖）
+│   ├── draft.test.js       # 草稿暂存测试（无依赖）
+│   ├── backup.test.js      # 备份码 / 导入校验测试（无依赖）
+│   └── integration.test.js # 真机冒烟：用 jsdom 把首页整个跑起来（需 jsdom）
+├── 更新网站.bat / 跑测试.bat
 ├── sitemap.xml / robots.txt
 └── README.md
 ```
+
+## 测试
+
+双击 **`跑测试.bat`** 一键跑全部四套；或分别执行：
+
+```bash
+node test/harness.js          # 28 项断言
+node test/draft.test.js       # 23 项断言
+node test/backup.test.js      # 62 项断言
+node test/integration.test.js # 82 项断言（需 npm install jsdom，没装会自动跳过）
+```
+
+前三套零依赖，直接在 Node 里跑。
+第四套是**发布前最该跑的一个**：它把 `index.html` 连同 7 个脚本真实执行一遍，
+并模拟「配置岗位 → 生成 → 保存 → 切日期 → 导出 → 导入 → 换主题 → 开弹窗」整条链路，
+能抓住「静态检查抓不到、只有运行才暴露」的问题（绑错元素、回调抛错、导入后渲染炸掉）。
+
+## 发布前必读：改版本号
+
+站点靠 `?v=YYYYMMDDNN` 做缓存失效，**改完静态文件必须同步升级版本号**，否则老用户拿不到新代码：
+
+1. `index.html` / `guide.html` 里所有 `?v=xxx`（css + 7 个 js）
+2. `sw.js` 顶部的 `VERSION`
+
+两处改成同一个新值即可。`sw.js` 的 `activate` 会自动删掉旧版本缓存。
+
+## 备份码格式
+
+- 现用：`IR2:` + base64(LZ 压缩后的紧凑 JSON)。比旧格式小 **20~30 倍**（一年日报约 26 KB，旧格式 840 KB）。
+- 兼容：`IR1:`（旧版 base64 JSON）与直接粘贴裸 JSON 仍可导入，老用户不丢数据。
+- 容错：粘贴时自动忽略换行、空格、`第N/M段：` 分段标记和重复前缀，所以分几条微信发给自己也能恢复。
+- 安全：导入的数据一律按不可信输入校验（结构不对拒绝；个别条目坏了丢弃并计数上报）；
+  渲染模块名 / 岗位名 / 留档信息一律用 `textContent`，不拼 `innerHTML`。
 
 ## 后续可扩展
 
 - 竖式/分栏更多日报版式；周报"老师批复"记录；多实习计划切换
 - 句式库扩充更多岗位（护理细化到科室、工科细分专业）
-- PWA 离线化（manifest + service worker），手机加桌面像 App 一样用
+- 数据量大时把 localStorage 换成 IndexedDB（目前 5MB 上限约可存 3~4 年日报）

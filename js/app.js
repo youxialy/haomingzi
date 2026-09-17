@@ -13,25 +13,45 @@
 
   /* ---------- Toast ---------- */
   var toastTimer = null;
-  function toast(msg) {
+  // 屏幕阅读器播报：错误类消息用 assertive，普通提示用 polite
+  function toast(msg, kind) {
     var t = $('toast');
+    t.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.hidden = true; }, 2200);
+    toastTimer = setTimeout(function () { t.hidden = true; }, kind === 'error' ? 4200 : 2400);
+  }
+
+  /* ---------- 常驻提示条（保存失败 / 备份码过大 / 导入异常） ---------- */
+  function showNotice(html, kind) {
+    var b = $('noticeBanner');
+    if (!b) return;
+    $('noticeText').innerHTML = html;
+    b.className = 'banner ' + (kind || 'warn');
+    b.hidden = false;
+  }
+  function hideNotice() {
+    var b = $('noticeBanner');
+    if (b) b.hidden = true;
   }
 
   /* ---------- 页签 ---------- */
   function goTab(name) {
-    document.querySelectorAll('.tab').forEach(function (b) {
-      b.classList.toggle('active', b.dataset.tab === name);
+    var tabs = document.querySelectorAll('.tab');
+    Array.prototype.forEach.call(tabs, function (b) {
+      var on = b.dataset.tab === name;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    document.querySelectorAll('.panel').forEach(function (p) {
+    var panels = document.querySelectorAll('.panel');
+    Array.prototype.forEach.call(panels, function (p) {
       p.classList.toggle('active', p.id === 'tab-' + name);
     });
     if (name === 'calendar') Calendar.render();
     if (name === 'aggregate') { Editor.renderAggStat(); Editor.renderSavedList(); }
     if (name === 'summary') Editor.renderSummaryStat();
+    if (name === 'settings') renderBackupHint();
     window.scrollTo({ top: 0 });
   }
 
@@ -150,8 +170,11 @@
     grid.innerHTML = '';
     Object.keys(Phrases.jobTypes).forEach(function (key) {
       var jt = Phrases.jobTypes[key];
-      var card = document.createElement('div');
+      // 用真正的 button：键盘可 Tab 到、可回车触发，读屏也能报出「按钮」
+      var card = document.createElement('button');
+      card.type = 'button';
       card.className = 'job-card' + (sel.jobType === key ? ' active' : '');
+      card.setAttribute('aria-pressed', sel.jobType === key ? 'true' : 'false');
       card.textContent = jt.name;
       card.addEventListener('click', function () {
         sel.jobType = key;
@@ -171,15 +194,44 @@
       box.innerHTML = '<p class="hint">先在上方选择岗位类型，会自动带出该岗位常见的工作模块。</p>';
       return;
     }
-    var preset = Phrases.jobTypes[sel.jobType].modules;
+    var jt = Phrases.jobTypes[sel.jobType];
+    if (!jt) {
+      // 配置里的岗位 key 在本版本不存在（多由导入他人备份或旧版数据造成）。
+      // 这里必须给提示而不是直接取 .modules —— 否则会抛错，而抛错会被导入流程
+      // 误判成「备份码已损坏」，用户会以为数据没恢复。
+      var warn = document.createElement('p');
+      warn.className = 'hint';
+      warn.textContent = '当前保存的岗位类型「' + sel.jobType + '」在本版本里不存在（可能来自旧版本或他人的备份）。'
+        + '你的日报数据都还在，请在上方重新选择一个岗位类型，然后点「💾 保存配置」。';
+      box.appendChild(warn);
+      return;
+    }
+    var preset = jt.modules;
     preset.concat(sel.custom).forEach(function (m) {
       var chip = document.createElement('span');
       var on = sel.modules.indexOf(m) >= 0;
       chip.className = 'module-chip' + (on ? ' active' : '');
-      chip.innerHTML = '<span class="m-name">' + m + '</span>' +
-        (sel.custom.indexOf(m) >= 0 ? '<span class="m-del" title="移除">✕</span>' : '');
-      chip.addEventListener('click', function (e) {
-        if (e.target.className === 'm-del') {
+      chip.setAttribute('role', 'checkbox');
+      chip.setAttribute('aria-checked', on ? 'true' : 'false');
+      chip.tabIndex = 0;
+
+      // 模块名可能来自用户输入或导入的备份码，一律用 textContent 写入，
+      // 绝不拼 innerHTML —— 否则一条恶意备份码就能执行脚本（本工具还在教用户互发备份码）。
+      var mName = document.createElement('span');
+      mName.className = 'm-name';
+      mName.textContent = m;
+      chip.appendChild(mName);
+
+      if (sel.custom.indexOf(m) >= 0) {
+        var del = document.createElement('span');
+        del.className = 'm-del';
+        del.title = '移除';
+        del.textContent = '✕';
+        chip.appendChild(del);
+      }
+
+      function activate(e) {
+        if (e.target && e.target.className === 'm-del') {
           sel.custom = sel.custom.filter(function (x) { return x !== m; });
           sel.modules = sel.modules.filter(function (x) { return x !== m; });
           renderModuleBox();
@@ -189,6 +241,10 @@
         if (i >= 0) sel.modules.splice(i, 1);
         else sel.modules.push(m);
         renderModuleBox();
+      }
+      chip.addEventListener('click', activate);
+      chip.addEventListener('keydown', function (e) {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); activate({ target: chip }); }
       });
       box.appendChild(chip);
     });
@@ -341,6 +397,10 @@
   /* ============================================================
    * 备份
    * ============================================================ */
+  // 备份码长度分档：微信单条文字消息装不下很长的文本，超过就直接引导走文件
+  var CODE_SAFE = 1500;      // 以内：微信聊天直接发没问题
+  var CODE_MAX = 20000;      // 以上：别走微信文字了，改成发文件
+
   function exportBackup() {
     var blob = new Blob([Store.exportJSON()], { type: 'application/json' });
     var a = document.createElement('a');
@@ -348,45 +408,103 @@
     a.download = '实习日报备份_' + Store.today() + '.json';
     a.click();
     URL.revokeObjectURL(a.href);
+    Store.markBackedUp();
+    renderBackupHint();
+    hideNotice();
+    toast('备份文件已下载：可以发到微信「文件传输助手」长期保存');
+  }
+
+  // 「该备份了」提醒
+  function renderBackupHint() {
+    var el = $('backupHint');
+    if (!el) return;
+    var n = Object.keys(Store.data.reports).length;
+    var at = Store.data.settings.lastBackupAt;
+    var days = at ? Math.floor((Date.now() - at) / 864e5) : null;
+    if (!n) {
+      el.textContent = '还没有生成过日报，暂时不需要备份。';
+      return;
+    }
+    if (days === null) {
+      el.textContent = '你有 ' + n + ' 篇日报，但还没有备份过——手机丢失、清缓存、换浏览器都会全部丢失，建议现在就备份一次。';
+    } else if (days >= 7) {
+      el.textContent = '上次备份是 ' + days + ' 天前，现在已有 ' + n + ' 篇日报，建议再备份一次。';
+    } else {
+      el.textContent = '上次备份：' + (days === 0 ? '今天' : days + ' 天前') + '｜当前已保存 ' + n + ' 篇日报。';
+    }
+  }
+
+  function copyBackupCode() {
+    var code = Store.makeCode();
+    var n = code.length;
+    if (n > CODE_MAX) {
+      showNotice('数据比较多，备份码约 <b>' + Math.round(n / 1024) + ' KB</b>，微信单条文字消息装不下。'
+        + '请改用上面那个「⬇ 导出备份文件」，把生成的 .json 文件发给微信「文件传输助手」——文件没有长度限制。');
+      return;
+    }
+    Store.markBackedUp();
+    renderBackupHint();
+    hideNotice();
+    if (n <= CODE_SAFE) {
+      Editor.copyText(code, '备份码已复制（' + n + ' 字符）：微信发给自己或存备忘录，新设备粘贴即可恢复');
+    } else {
+      Editor.copyText(code, '备份码已复制（约 ' + Math.round(n / 1024) + ' KB）：较长，建议存进微信「收藏」笔记或备忘录，别直接发聊天；也可以改用「导出备份文件」');
+    }
+  }
+
+  // 导入成功后统一刷新界面
+  function afterImport(info, label) {
+    applyTheme();
+    loadConfigToWizard();
+    Editor.resync();
+    Calendar.render(); Calendar.renderTodos();
+    renderDue(); renderPhrases(); renderBackupHint();
+
+    var msg = label + '成功 ✓ 共恢复 ' + info.reports + ' 篇日报';
+    if (info.skipped) msg += '（跳过 ' + info.skipped + ' 条损坏记录）';
+    toast(msg);
+
+    var cfg = Store.data.config;
+    if (cfg && cfg.jobType && !Phrases.jobTypes[cfg.jobType]) {
+      showNotice('数据已恢复，但备份里的岗位类型「' + escapeHtml(cfg.jobType) + '」在本版本中不存在。'
+        + '你的日报都在，请到「设置」里重新选一个岗位类型，然后点「💾 保存配置」。');
+      goTab('settings');
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
 
   function bindBackup() {
     $('exportBtn').addEventListener('click', exportBackup);
-    $('copyCodeBtn').addEventListener('click', function () {
-      var code = 'IR1:' + btoa(unescape(encodeURIComponent(Store.exportJSON())));
-      Editor.copyText(code, '备份码已复制：微信发给自己或存备忘录，新设备粘贴恢复');
-    });
+    $('copyCodeBtn').addEventListener('click', copyBackupCode);
     $('restoreCodeBtn').addEventListener('click', function () {
       var v = $('backupCodeIn').value.trim();
       if (!v) { toast('先把备份码粘贴到输入框'); return; }
-      var json;
-      try {
-        json = v.indexOf('IR1:') === 0 ? decodeURIComponent(escape(atob(v.slice(4)))) : v;
-      } catch (e) { toast('恢复失败：备份码格式不对'); return; }
-      Store.importJSON(json, function () {
-        applyTheme();
-        loadConfigToWizard();
-        Editor.resync();
-        Calendar.render(); Calendar.renderTodos();
-        renderDue(); renderPhrases();
+      Store.importCode(v, function (info) {
         $('backupCodeIn').value = '';
-        toast('恢复成功 ✓');
-      }, function () { toast('恢复失败：备份码不完整或已损坏'); });
+        afterImport(info, '恢复');
+      }, function (e) {
+        console.error('恢复失败', e);
+        toast('恢复失败：备份码不完整或已损坏（' + (e && e.message ? e.message : '无法解析') + '）', 'error');
+      });
     });
     $('importFile').addEventListener('change', function () {
       var f = this.files[0];
       if (!f) return;
       var reader = new FileReader();
       reader.onload = function () {
-        Store.importJSON(reader.result, function () {
-          applyTheme();
-          loadConfigToWizard();
-          Editor.resync();
-          Calendar.render(); Calendar.renderTodos();
-          renderDue(); renderPhrases();
-          toast('导入成功 ✓');
-        }, function () { toast('导入失败：文件格式不对'); });
+        Store.importCode(reader.result, function (info) {
+          afterImport(info, '导入');
+        }, function (e) {
+          console.error('导入失败', e);
+          toast('导入失败：文件格式不对（' + (e && e.message ? e.message : '无法解析') + '）', 'error');
+        });
       };
+      reader.onerror = function () { toast('文件读取失败，请重试', 'error'); };
       reader.readAsText(f);
       this.value = '';
     });
@@ -404,10 +522,46 @@
     applyTheme();
     $('themeBtn').addEventListener('click', toggleTheme);
 
-    // 页签
+    // 保存失败 / 配额将满：必须让用户看见，不能只写 console
+    Store.onSaveError = function (info) {
+      if (info.reason === 'quota') {
+        showNotice('浏览器给本站的存储空间快满了（当前约 ' + Math.round(info.size / 1024) + ' KB）。'
+          + '建议现在点「⬇ 导出备份文件」保存一份，再清掉不需要的旧数据。');
+      } else {
+        showNotice('保存失败：数据没能写进浏览器。常见原因是<b>无痕/隐私模式</b>，或浏览器存储被占满。'
+          + '请立即用「⬇ 导出备份文件」把数据保存到文件，否则关闭页面就会丢失。', 'danger');
+      }
+    };
+
+    // 常驻提示条关闭
+    $('noticeClose').addEventListener('click', hideNotice);
+
+    // 页签（含左右方向键切换，键盘用户不用一个个 Tab）
     $('tabs').addEventListener('click', function (e) {
       var b = e.target.closest('.tab');
       if (b) goTab(b.dataset.tab);
+    });
+    $('tabs').addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+      var list = Array.prototype.slice.call(this.querySelectorAll('.tab'));
+      var i = list.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') i = (i - 1 + list.length) % list.length;
+      else if (e.key === 'ArrowRight') i = (i + 1) % list.length;
+      else if (e.key === 'Home') i = 0;
+      else i = list.length - 1;
+      list[i].focus();
+      goTab(list[i].dataset.tab);
+    });
+
+    // Esc 关闭当前打开的弹窗
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      ['feedbackMask', 'installMask'].forEach(function (id) {
+        var m = $(id);
+        if (m && !m.hidden) closeModal(m);
+      });
     });
 
     // 首次使用横幅
@@ -480,9 +634,9 @@
       Store.save();
       $('installBanner').hidden = true;
     });
-    $('installHelpClose').addEventListener('click', function () { $('installMask').hidden = true; });
+    $('installHelpClose').addEventListener('click', function () { closeModal($('installMask')); });
     $('installMask').addEventListener('click', function (e) {
-      if (e.target === this) this.hidden = true;
+      if (e.target === this) closeModal(this);
     });
     $('settingsInstallBtn').addEventListener('click', function () {
       if (deferredInstall) {
@@ -496,6 +650,7 @@
 
     // 备份
     bindBackup();
+    renderBackupHint();
 
     // 意见反馈
     $('feedbackLink').addEventListener('click', openFeedback);
@@ -560,8 +715,22 @@
     deferredInstall = e;
     maybeShowInstall();
   });
-  function openInstallHelp() {
-    $('installMask').hidden = false;
+  function openInstallHelp() { openModal($('installMask')); }
+
+  /* ============================================================
+   * 弹窗：统一的打开 / 关闭（含 Esc 关闭与焦点归位）
+   * ============================================================ */
+  var lastFocus = null;
+  function openModal(mask) {
+    lastFocus = document.activeElement;
+    mask.hidden = false;
+    var card = mask.querySelector('.modal-card');
+    if (card) { try { card.focus(); } catch (e) {} }
+  }
+  function closeModal(mask) {
+    mask.hidden = true;
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+    lastFocus = null;
   }
 
   /* ============================================================
@@ -569,31 +738,56 @@
    * ============================================================ */
   function openFeedback() {
     var box = $('fbChannels');
-    var rows = [];
-    var hasEasy = FEEDBACK.qqGroup || FEEDBACK.txc;
-    if (FEEDBACK.qqGroup) {
-      rows.push('<div class="fb-row"><span>QQ 反馈群：<b>' + FEEDBACK.qqGroup + '</b>' +
-        '<br><span class="hint">加群提意见，还能第一时间收到更新通知</span></span>' +
-        '<button class="btn sm" id="fbCopyQQ">复制群号</button></div>');
+    box.innerHTML = '';
+    var hasEasy = !!(FEEDBACK.qqGroup || FEEDBACK.txc);
+
+    function row(text, hint, btn) {
+      var r = document.createElement('div');
+      r.className = 'fb-row';
+      var left = document.createElement('span');
+      left.textContent = text;
+      if (hint) {
+        var h = document.createElement('span');
+        h.className = 'hint';
+        h.appendChild(document.createElement('br'));
+        h.appendChild(document.createTextNode(hint));
+        left.appendChild(h);
+      }
+      r.appendChild(left);
+      r.appendChild(btn);
+      return r;
     }
-    if (FEEDBACK.txc) {
-      rows.push('<div class="fb-row"><span>在线留言板<span class="hint"><br>QQ/微信一键登录即可留言，无需注册</span></span>' +
-        '<a class="btn sm" href="' + FEEDBACK.txc + '" target="_blank" rel="noopener">去留言</a></div>');
+    function linkBtn(text, href) {
+      var a = document.createElement('a');
+      a.className = 'btn sm';
+      a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = text;
+      return a;
     }
-    rows.push('<div class="fb-row"><span>网页反馈' + (hasEasy ? '（进阶）' : '') + '<span class="hint"><br>需 GitHub 账号' + (hasEasy ? '' : '，适合能用 GitHub 的同学') + '</span></span>' +
-      '<a class="btn sm" href="' + FEEDBACK.github + '" target="_blank" rel="noopener">去填写</a></div>');
-    box.innerHTML = rows.join('');
+
     if (FEEDBACK.qqGroup) {
-      $('fbCopyQQ').addEventListener('click', function () {
+      var copyQQ = document.createElement('button');
+      copyQQ.className = 'btn sm';
+      copyQQ.id = 'fbCopyQQ';
+      copyQQ.textContent = '复制群号';
+      copyQQ.addEventListener('click', function () {
         Editor.copyText(FEEDBACK.qqGroup, '已复制群号，去 QQ 搜索加入即可');
       });
+      box.appendChild(row('QQ 反馈群：' + FEEDBACK.qqGroup, '加群提意见，还能第一时间收到更新通知', copyQQ));
     }
+    if (FEEDBACK.txc) {
+      box.appendChild(row('在线留言板', 'QQ/微信一键登录即可留言，无需注册', linkBtn('去留言', FEEDBACK.txc)));
+    }
+    box.appendChild(row('网页反馈' + (hasEasy ? '（进阶）' : ''),
+      '需 GitHub 账号' + (hasEasy ? '' : '，适合能用 GitHub 的同学'),
+      linkBtn('去填写', FEEDBACK.github)));
+
     $('fbNote').textContent = hasEasy
       ? '以上渠道任选其一，反馈都会尽快处理；通用问题可先点「复制反馈模板」。'
       : '点「复制反馈模板」填好内容，可通过任意你能联系到站长的渠道发送。';
-    $('feedbackMask').hidden = false;
+    openModal($('feedbackMask'));
   }
-  function closeFeedback() { $('feedbackMask').hidden = true; }
+  function closeFeedback() { closeModal($('feedbackMask')); }
   function copyFeedbackTpl() {
     Editor.copyText(
       '【实习日报一点通 · 意见反馈】\n' +

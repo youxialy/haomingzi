@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<meta name="theme-color" content="#3b56e0">
+<meta name="theme-color" id="themeColorMeta" content="#3b56e0">
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="article">
 <meta property="og:title" content="实习日报怎么写？模板+句式+一键生成工具">
@@ -27,9 +27,12 @@
     t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
   }
   document.documentElement.setAttribute('data-theme', t);
+  // 浏览器地址栏配色也跟着走，否则深色页面配亮蓝地址栏很割裂
+  var m = document.getElementById('themeColorMeta');
+  if (m) m.setAttribute('content', t === 'dark' ? '#14161c' : '#3b56e0');
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026091701">
+<link rel="stylesheet" href="css/style.css?v=2026091702">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",

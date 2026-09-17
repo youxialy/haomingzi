@@ -9,13 +9,20 @@ echo 正在收集改动...
 git add -A
 git commit -m "网站更新 %date% %time%" >nul 2>&1
 if errorlevel 1 (
-  echo 没有检测到新改动，网站已是最新。
-) else (
-  echo 已打包改动，正在推送到 GitHub...
-  git push
+  echo 没有检测到新改动，继续检查是否需要同步到线上...
+)
+echo 正在推送到 GitHub...
+git push
+if errorlevel 1 (
+  echo.
+  echo [提示] 常规推送失败（本机到 github.com 的连接经常被掐断）。
+  echo        改用 GitHub API 通道发布...
+  set "PYEXE=C:\Users\ASUS\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+  if not exist "%PYEXE%" set "PYEXE=python"
+  "%PYEXE%" "..\hmz_work\api_push.py"
   if errorlevel 1 (
     echo.
-    echo [失败] 推送未成功：请检查网络后重新双击本文件。
+    echo [失败] 两条通道都没成功：请检查网络后重新双击本文件。
     pause
     exit /b 1
   )

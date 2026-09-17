@@ -17,9 +17,24 @@ if errorlevel 1 (
   echo.
   echo [提示] 常规推送失败（本机到 github.com 的连接经常被掐断）。
   echo        改用 GitHub API 通道发布...
-  set "PYEXE=C:\Users\ASUS\.workbuddy\binaries\python\versions\3.13.12\python.exe"
-  if not exist "%PYEXE%" set "PYEXE=python"
-  "%PYEXE%" "..\hmz_work\api_push.py"
+
+  set "DEPLOY="
+  if exist "%~dp0..\_tools\api_deploy.py" set "DEPLOY=%~dp0..\_tools\api_deploy.py"
+  if not defined DEPLOY if exist "%USERPROFILE%\.workbuddy\skills\github-pages-api-deploy\scripts\api_deploy.py" set "DEPLOY=%USERPROFILE%\.workbuddy\skills\github-pages-api-deploy\scripts\api_deploy.py"
+  if not defined DEPLOY if exist "%~dp0..\hmz_work\api_push.py" set "DEPLOY=%~dp0..\hmz_work\api_push.py"
+  if not defined DEPLOY (
+    echo [失败] 找不到 api_deploy.py，应在 ..\_tools\ 目录下。
+    pause
+    exit /b 1
+  )
+
+  set "PYEXE="
+  if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PYEXE=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+  if not defined PYEXE if exist "D:\python\python.exe" set "PYEXE=D:\python\python.exe"
+  if not defined PYEXE set "PYEXE=python"
+
+  echo 使用: %DEPLOY%
+  "%PYEXE%" "%DEPLOY%"
   if errorlevel 1 (
     echo.
     echo [失败] 两条通道都没成功：请检查网络后重新双击本文件。

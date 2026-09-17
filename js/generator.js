@@ -443,6 +443,8 @@
     var sections = (config.sections && config.sections.length) ? config.sections : defaultSections();
     var secNo = 0;
     var problem = null;
+    var doneAt = -1;    // 「今日完成」正文之后的插入点（补充记录续在此处）
+    var doneIdx = 0;    // 该栏目已有条目数，补充记录从这里继续编号
 
     function emit(title, body) {
       lines.push('');
@@ -471,6 +473,8 @@
           doneLines.push(itemPrefix(sk, mods.length) + extra.trim().replace(/。$/, '') + '。');
         }
         emit(title, doneLines);
+        doneAt = lines.length;
+        doneIdx = doneLines.length;
 
       } else if (sec.key === 'gains') {
         var gm = choice(rng, mods) || mods[0];
@@ -536,26 +540,64 @@
       }
     });
 
-    var text = lines.join('\n');
-
-    // 字数保障：不足下限时追加不重复的补充句
+    /* ---------- 字数保障 ----------
+     * 旧版这里直接 `Phrases.fillers.filter(...)`，只过滤「本篇已用 / 今日已用 / 近 7 天相似」，
+     * **完全绕过 candidatePool / tier / 全周期台账**——P0 建的台账这个池一次都没查过。
+     * 池子只有 30 条、默认 300 字时篇均只追加 0.04 条（750 天都够用），所以问题被掩盖了；
+     * 字数目标一调高就暴露：400 字起 6 天内复用 75 次，600 字 905 次，800 字 1755 次、M1 89.7%。
+     *
+     * 现在分两层：
+     *   ① 结构化补充记录（noteLead × noteAct × noteEnd，27000 种组合）插进「今日完成」栏目末尾续编号，
+     *      读起来仍是一条工作记录，而不是贴在文末的一堆空话；
+     *   ② 仍不够才退回 fillers 作文末补充说明。
+     * 两层都走 takeFresh，于是台账、tier（21/14/7/3 天）、同日去重、接缝病句检查全部生效，
+     * 每一维的模板编号都会写进 tpls，下次生成时按「最久未用」轮换。
+     */
     var min = config.minWords || 0;
-    var used = {};
-    var guard = 0;
-    while (charCount(text) < min && guard < 16) {
-      var fm = choice(rng, mods) || mods[0] || '';
-      var avail = Phrases.fillers.filter(function (f) {
-        return !used[f] && !hist.today[f] && !badJoin(f, fm) &&
-          maxSim(fill(f, { module: fm }), hist.lines) < LINE_SIM;
-      });
-      if (!avail.length) avail = Phrases.fillers.filter(function (f) { return !used[f]; });
-      if (!avail.length) break;
-      var s = choice(rng, avail);
-      used[s] = 1;
-      usedTpls.push(s);
-      text += '\n' + fill(s, { module: fm });
+    var need = min ? (min - charCount(lines.join('\n'))) : 0;
+    var noteLines = [], tailLines = [], guard = 0;
+    while (need > 0 && guard < 28) {
+      var nm = mods[guard % mods.length] || '';
+      var nv = { module: nm, weekday: weekday, dayN: dayN };
+      var parts = [];
+      // 引导句必带 {module}：补充记录挂在「今日完成」栏目里，不绑定到某项工作就会读成
+      // 「先做了两遍摸底，再正式下手做。」这种和上文完全脱节的句子（初版 22% 概率省略引子，已去掉）。
+      var lead = takeFresh(rng, Phrases.noteLead, nm, nv, hist);
+      usedTpls.push(lead.tpl);
+      parts.push(lead.line);
+      var actN = rng() < 0.5 ? 2 : 1;
+      for (var k = 0; k < actN; k++) {
+        var act = takeFresh(rng, Phrases.noteAct, nm, nv, hist);
+        usedTpls.push(act.tpl);
+        parts.push(act.line);
+      }
+      if (rng() < 0.72) {                      // 28% 不加收束句，长短错落
+        var tail = takeFresh(rng, Phrases.noteEnd, nm, nv, hist);
+        usedTpls.push(tail.tpl);
+        parts.push(tail.line);
+      }
+      var nt = parts.join('');
+      noteLines.push(nt);
+      need -= charCount(nt);
       guard++;
     }
+    guard = 0;
+    while (need > 0 && guard < 16) {
+      var fm2 = mods[guard % mods.length] || '';
+      var fp = takeFresh(rng, Phrases.fillers, fm2, { module: fm2 }, hist);
+      if (!fp.tpl) break;
+      usedTpls.push(fp.tpl);
+      tailLines.push(fp.line);
+      need -= charCount(fp.line);
+      guard++;
+    }
+
+    if (noteLines.length && doneAt >= 0) {
+      var insLines = noteLines.map(function (s, i) { return itemPrefix(sk, doneIdx + i) + s; });
+      lines.splice.apply(lines, [doneAt, 0].concat(insLines));
+    }
+    var text = lines.join('\n');
+    if (tailLines.length) text += '\n\n' + tailLines.join('\n');
 
     if (sk.closer) text += '\n' + sk.closer;
 
@@ -634,6 +676,9 @@
     secPrefix: secPrefix,
     itemPrefix: itemPrefix,
     BAD_PAIR: BAD_PAIR,
-    badJoin: badJoin
+    badJoin: badJoin,
+    /* 配置指纹（P1 起混入日报随机种子；P2-B 起 composer 的周报/月报/总结也用它做隔离）。
+     * 同一配置 + 同一日期/区间必须仍然逐字可复现，改这里要留意。 */
+    cfgKey: cfgKey
   };
 })();

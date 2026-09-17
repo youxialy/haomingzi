@@ -81,11 +81,11 @@ function fp(text) {   // 结构指纹
 
 /* ---------------- 语料 ---------------- */
 var DAYS = 60;
-function buildCorpus(jobType, days) {
+function buildCorpus(jobType, days, minWords) {
   var jt = Phrases.jobTypes[jobType];
   var config = {
     jobType: jobType, modules: jt.modules.slice(), startDate: '2026-09-07', endDate: '2026-12-31',
-    minWords: 300, dailyLoad: 10, company: '某某公司', jobTitle: jt.name
+    minWords: minWords || 300, dailyLoad: 10, company: '某某公司', jobTitle: jt.name
   };
   var reports = {}, stats = {}, order = [], base = new Date(2026, 8, 7);
   for (var i = 0; i < days; i++) {
@@ -99,6 +99,40 @@ function buildCorpus(jobType, days) {
     order.push(ds);
   }
   return { config: config, reports: reports, order: order, stats: stats, base: base };
+}
+
+/* 模板复用间隔统计（共用给 M2 / M10）：返回 {median, within6, minGap, reuses} */
+function reuseStats(c) {
+  var byKey = {}, gaps = [], within6 = 0, minGap = Infinity;
+  c.order.forEach(function (d, di) {
+    (c.reports[d].tpls || []).forEach(function (t) {
+      if (String(t).charAt(0) === '@') return;   // 骨架标记不计入句式台账
+      (byKey[t] = byKey[t] || []).push(di);
+    });
+  });
+  Object.keys(byKey).forEach(function (k) {
+    var a = byKey[k];
+    for (var i = 1; i < a.length; i++) {
+      var g = a[i] - a[i - 1];
+      gaps.push(g);
+      if (g <= 6) within6++;
+      if (g < minGap) minGap = g;
+    }
+  });
+  return { median: median(gaps), within6: within6, minGap: minGap, reuses: gaps.length };
+}
+
+/* 整篇相似度 ≥0.5 的篇对占比与最大值 */
+function overRate(list) {
+  var over = 0, tot = 0, mx = 0;
+  for (var i = 0; i < list.length; i++) {
+    for (var j = i + 1; j < list.length; j++) {
+      var s = sim(list[i], list[j]); tot++;
+      if (s > mx) mx = s;
+      if (s >= 0.5) over++;
+    }
+  }
+  return { rate: over / tot, max: mx };
 }
 
 console.log('P0 内容重复度验收（' + DAYS + ' 天语料，service 岗位）');
@@ -437,6 +471,132 @@ section('M9 跨岗位隔离');
   });
   var kinds = Object.keys(skels).length;
   ok(kinds >= 3, '同一天不同岗位至少用到 ' + kinds + ' 套不同骨架（≥3）', JSON.stringify(skels));
+})();
+
+/* ============================================================
+ * M10 参数矩阵：字数下限
+ * 旧版只有「120 天 / 300 字 / 单岗位」这一格是绿的，M1~M9 全都跑在这一格上，
+ * 于是「字数不足时追加 filler」那条支路（绕过台账）一直没被测到：
+ *   400 字 → 6 天内复用 75 次；600 字 → 905 次、M1 30.3%；800 字 → 1755 次、M1 89.7%。
+ * 现在改成组合式补充记录并接回台账，这里把 300 / 500 / 800 三格固化下来。
+ * ============================================================ */
+section('M10 字数下限参数矩阵（300 / 500 / 800 字）');
+(function () {
+  var CASES = [
+    { mw: 300, maxOver: 0.08, within6: 0 },
+    { mw: 500, maxOver: 0.08, within6: 0 },
+    // 800 字是极值：要 30 天不复用就得再备 ~500 条补充片段，不值当。
+    // 这里只锁「整篇相似度」这条用户真正会踩的线；模板层允许复用但必须仍有节制。
+    { mw: 800, maxOver: 0.15, within6: null }
+  ];
+  CASES.forEach(function (cs) {
+    var c = buildCorpus('service', 45, cs.mw);
+    var list = c.order.map(function (d) { return c.reports[d].text; });
+    var or = overRate(list);
+    var rs = reuseStats(c);
+    var short = 0, bad = 0;
+    c.order.forEach(function (d) {
+      if (Generator.charCount(c.reports[d].text) < cs.mw) short++;
+      var t = c.reports[d].text, m;
+      var re = new RegExp(Generator.BAD_PAIR.source, 'g');
+      while ((re.exec(t))) bad++;
+    });
+    console.log('  · ' + cs.mw + ' 字：平均 ' + Math.round(mean(c.order.map(function (d) { return Generator.charCount(c.reports[d].text); }))) +
+      ' 字，复用间隔中位 ' + rs.median + ' 天，6 天内复用 ' + rs.within6 + ' 次，≥0.5 篇对 ' + pct(or.rate));
+    ok(or.rate < cs.maxOver, cs.mw + ' 字：≥0.5 篇对占比 ' + pct(or.rate) + ' < ' + pct(cs.maxOver),
+      '最大篇对 ' + or.max.toFixed(3));
+    if (cs.within6 !== null) {
+      ok(rs.within6 <= cs.within6, cs.mw + ' 字：6 天内模板复用 ' + rs.within6 + ' 次 ≤ ' + cs.within6,
+        '最短间隔 ' + (rs.minGap === Infinity ? '-' : rs.minGap) + ' 天');
+    } else {
+      ok(rs.minGap >= 3, cs.mw + ' 字：最短复用间隔 ' + (rs.minGap === Infinity ? '-' : rs.minGap) + ' 天 ≥3',
+        '6 天内复用 ' + rs.within6 + ' 次（旧版 1755 次）');
+    }
+    ok(short === 0, cs.mw + ' 字：45 篇全部达到字数下限', '不足 ' + short + ' 篇');
+    ok(bad === 0, cs.mw + ' 字：正文病句 0 处', '命中 ' + bad + ' 处');
+  });
+})();
+
+/* ============================================================
+ * M11 聚合稿跨配置隔离
+ * P1 只把配置指纹混进了日报种子，composer 一直是「同起止日期 → 同一条随机序列」：
+ * 同岗位不同公司的周报掩名相似度 0.927、实习总结 0.994 —— 一个班各自交周报必然互相命中。
+ * ============================================================ */
+section('M11 聚合稿跨配置隔离（同区间、不同配置）');
+(function () {
+  function pack(jobType, company, days) {
+    var jt = Phrases.jobTypes[jobType];
+    var config = {
+      jobType: jobType, modules: jt.modules.slice(), startDate: '2026-09-07', endDate: '2026-12-31',
+      minWords: 300, dailyLoad: 10, company: company, jobTitle: jt.name
+    };
+    var reports = {}, stats = {}, base = new Date(2026, 8, 7);
+    for (var i = 0; i < days; i++) {
+      var ds = fmt(addDays(base, i));
+      var r = Generator.generateDaily(ds, config, reports, stats, '');
+      reports[ds] = { date: ds, text: r.text, modules: r.modules, extra: '', problem: r.problem, tpls: r.tpls || [] };
+      r.modules.forEach(function (m) { var s = stats[m] || { count: 0 }; s.count++; stats[m] = s; });
+    }
+    return { config: config, reports: reports };
+  }
+  var A = pack('service', '甲公司', 28);
+  var B = pack('service', '乙公司', 28);
+  var C = pack('nurse', '甲公司', 28);
+  var FROM = '2026-09-07', TO = '2026-09-27';
+
+  var allMods = [];
+  Object.keys(Phrases.jobTypes).forEach(function (k) {
+    Phrases.jobTypes[k].modules.forEach(function (m) { allMods.push(m); });
+  });
+  allMods.sort(function (a, b) { return b.length - a.length; });
+  function mask(t) {
+    var s = t;
+    allMods.forEach(function (m) { s = s.split(m).join('«M»'); });
+    return s.replace(/[甲乙]公司/g, '«C»').replace(/\d+/g, '#');
+  }
+
+  var wa = Composer.aggregate('weekly', FROM, TO, A.config, A.reports);
+  var wb = Composer.aggregate('weekly', FROM, TO, B.config, B.reports);
+  var wc = Composer.aggregate('weekly', FROM, TO, C.config, C.reports);
+  var sa = Composer.internshipSummary(A.config, A.reports);
+  var sb = Composer.internshipSummary(B.config, B.reports);
+  var sc = Composer.internshipSummary(C.config, C.reports);
+
+  var wAB = sim(mask(wa.text), mask(wb.text));
+  var wAC = sim(mask(wa.text), mask(wc.text));
+  var sAB = sim(mask(sa.text), mask(sb.text));
+  var sAC = sim(mask(sa.text), mask(sc.text));
+  console.log('  周报 掩名：同岗位异公司 ' + wAB.toFixed(3) + '，异岗位 ' + wAC.toFixed(3) +
+    '；骨架 ' + wa.skeleton + '/' + wb.skeleton + '/' + wc.skeleton);
+  console.log('  总结 掩名：同岗位异公司 ' + sAB.toFixed(3) + '，异岗位 ' + sAC.toFixed(3) +
+    '；骨架 ' + sa.skeleton + '/' + sb.skeleton + '/' + sc.skeleton);
+  ok(wAB < 0.55, '周报：同岗位不同公司 掩名相似度 ' + wAB.toFixed(3) + ' < 0.55', '旧版 0.927');
+  ok(wAC < 0.55, '周报：不同岗位 掩名相似度 ' + wAC.toFixed(3) + ' < 0.55', '旧版 0.962');
+  ok(sAB < 0.55, '总结：同岗位不同公司 掩名相似度 ' + sAB.toFixed(3) + ' < 0.55', '旧版 0.994');
+  ok(sAC < 0.60, '总结：不同岗位 掩名相似度 ' + sAC.toFixed(3) + ' < 0.60', '旧版 0.978');
+
+  // 同配置同区间必须逐字可复现（配置指纹不能把确定性也弄丢）
+  var again = Composer.aggregate('weekly', FROM, TO, A.config, A.reports);
+  ok(again.text === wa.text, '同配置 + 同区间 → 周报逐字可复现');
+  ok(Composer.internshipSummary(A.config, A.reports).text === sa.text, '同配置 + 同日报集 → 总结逐字可复现');
+
+  // 结构周期：8 套骨架，相邻两期必不同，第 N 期与第 N+8 期同骨架
+  // （用一份独立的长语料，28 天只够 4 期）
+  var LONG = pack('service', '甲公司', 140);
+  var ids = [], wk = new Date(2026, 8, 7);
+  for (var w = 0; w < 20; w++) {
+    var f = fmt(addDays(wk, w * 7)), t = fmt(addDays(wk, w * 7 + 6));
+    var one = Composer.aggregate('weekly', f, t, LONG.config, LONG.reports);
+    ids.push(one && one.skeleton ? one.skeleton : '?');
+  }
+  var adjSame = 0;
+  for (var i = 1; i < ids.length; i++) if (ids[i] === ids[i - 1]) adjSame++;
+  var kinds = {}; ids.forEach(function (x) { kinds[x] = 1; });
+  ok(adjSame === 0, '20 期周报相邻两期骨架均不同', ids.slice(0, 6).join(' '));
+  ok(Object.keys(kinds).length >= 6, '周报用到 ' + Object.keys(kinds).length + ' 套骨架（≥6）', ids.join(' '));
+  var same8 = 0;
+  for (var k2 = 0; k2 + 8 < ids.length; k2++) if (ids[k2] === ids[k2 + 8]) same8++;
+  ok(same8 === ids.length - 8, '第 N 期与第 N+8 期同骨架（结构周期 = 8 期）', same8 + '/' + (ids.length - 8));
 })();
 
 /* ============================================================

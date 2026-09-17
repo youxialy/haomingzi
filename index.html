@@ -8,14 +8,28 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<meta name="theme-color" content="#4f6ef7">
+<meta name="theme-color" id="themeColorMeta" content="#3b56e0">
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="实习日报一点通 | 每天30秒搞定实习日报·周报·月报">
 <meta property="og:description" content="一次配置岗位，日报一键生成；周报月报实习总结自动汇总。25种岗位模板，数据只存本地，无账号无上传。">
 <meta property="og:url" content="https://youxialy.github.io/haomingzi/">
 <meta property="og:image" content="https://youxialy.github.io/haomingzi/icons/icon-512.png">
-<link rel="stylesheet" href="css/style.css?v=2026091402">
+<!-- 主题必须在样式表之前定下来，否则深色模式用户每次打开都会先闪一下白屏 -->
+<script>
+(function () {
+  var t = '';
+  try {
+    var raw = localStorage.getItem('irdp_data_v1');
+    if (raw) t = (JSON.parse(raw).settings || {}).theme || '';
+  } catch (e) {}
+  if (t !== 'dark' && t !== 'light') {
+    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<link rel="stylesheet" href="css/style.css?v=2026091701">
 </head>
 <body>
 
@@ -81,10 +95,11 @@
         <button class="btn" id="copyBtn">📋 复制</button>
         <button class="btn ghost" id="markBtn">✅ 标记已提交</button>
       </div>
-      <p class="hint">生成内容基于你配置的真实工作模块自动成文；复制后粘贴到学习通日报提交框即可。手动改过的内容重新生成前会先确认，不会被静默覆盖。</p>
+      <p class="hint">生成内容基于你配置的真实工作模块自动成文；复制后粘贴到学习通日报提交框即可。手动改过的内容重新生成前会先确认，不会被静默覆盖；没点保存的修改会自动暂存，切日期、关页面都不会丢。</p>
     </div>
     <div class="card editor-card">
       <div class="editor-head"><span id="wordCount">0 字</span><span class="hint" id="wordTarget"></span></div>
+      <div class="draft-hint" id="draftHint" hidden></div>
       <textarea id="reportEditor" rows="18" placeholder="点击「✨ 生成日报」自动产出全文，也可以直接手写或修改生成结果…"></textarea>
     </div>
   </section>
@@ -113,9 +128,10 @@
         <button class="btn ghost" id="aggPrintBtn">🖨 打印</button>
         <button class="btn ghost" id="aggSaveBtn">💾 保存留档</button>
       </div>
-      <p class="hint">按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报。</p>
+      <p class="hint">按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报；每个范围各留一份草稿，切来切去也不丢。</p>
     </div>
     <div class="card editor-card">
+      <div class="draft-hint" id="aggDraftHint" hidden></div>
       <textarea id="aggEditor" rows="22" placeholder="选择类型和范围后点击「✨ 生成草稿」——自动汇总区间内的日报内容…"></textarea>
     </div>
     <div class="card" id="savedCard" hidden>
@@ -137,6 +153,7 @@
       </div>
     </div>
     <div class="card editor-card">
+      <div class="draft-hint" id="sumDraftHint" hidden></div>
       <textarea id="sumEditor" rows="24" placeholder="积累一段时间的日报后，点击「✨ 生成实习总结」自动汇总全文…"></textarea>
     </div>
   </section>
@@ -324,12 +341,12 @@
 <div id="printSheet"></div>
 <div id="toast" hidden></div>
 
-<script src="js/store.js?v=2026091402"></script>
-<script src="js/phrases.js?v=2026091402"></script>
-<script src="js/generator.js?v=2026091402"></script>
-<script src="js/composer.js?v=2026091402"></script>
-<script src="js/editor.js?v=2026091402"></script>
-<script src="js/calendar.js?v=2026091402"></script>
-<script src="js/app.js?v=2026091402"></script>
+<script src="js/store.js?v=2026091701"></script>
+<script src="js/phrases.js?v=2026091701"></script>
+<script src="js/generator.js?v=2026091701"></script>
+<script src="js/composer.js?v=2026091701"></script>
+<script src="js/editor.js?v=2026091701"></script>
+<script src="js/calendar.js?v=2026091701"></script>
+<script src="js/app.js?v=2026091701"></script>
 </body>
 </html>

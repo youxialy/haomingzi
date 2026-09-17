@@ -13,12 +13,98 @@
   };
   var lastGenerated = null;       // 最近一次生成结果（结构化字段随保存落库）
   var manualEdited = false;       // 用户是否手动改过当前编辑器内容（重新生成前据此确认）
+  var snapshot = { date: null, text: '', extra: '' };  // 上一次写进编辑器的内容，用于识别未保存改动
+  var draftTimer = null;          // 草稿落盘防抖
+  var AGG_DRAFT_MAX = 12;         // 周月报草稿最多保留份数，防止 localStorage 无限增长
+  var DRAFT_SAVE_DELAY = 400;     // 输入停顿多久后把草稿写进 localStorage
 
   /* ---------- 工具 ---------- */
   function shiftDate(dateStr, delta) {
     var d = Store.parse(dateStr);
     d.setDate(d.getDate() + delta);
     return Store.fmt(d);
+  }
+
+  /* ============================================================
+   * 草稿暂存：任何「未点保存的输入」都先落进 Store.data.drafts，
+   * 切日期 / 切范围 / 切页签 / 刷新 / 关页面都不会再丢内容。
+   * ============================================================ */
+  function drafts() {
+    if (!Store.data.drafts || typeof Store.data.drafts !== 'object') Store.data.drafts = {};
+    var d = Store.data.drafts;
+    if (!d.daily || typeof d.daily !== 'object') d.daily = {};
+    if (!d.agg || typeof d.agg !== 'object') d.agg = {};
+    if (typeof d.summary !== 'string') d.summary = '';
+    return d;
+  }
+
+  function scheduleSave() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(function () { draftTimer = null; Store.save(); }, DRAFT_SAVE_DELAY);
+  }
+
+  function flushSave() {
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    Store.save();
+  }
+
+  // 与已保存的日报内容一致就删掉草稿，保持草稿库干净
+  function putDailyDraft(date, text, extra) {
+    var d = drafts();
+    var rec = Store.data.reports[date];
+    var savedText = rec ? (rec.text || '') : '';
+    var savedExtra = (rec && rec.extra) || '';
+    if (!text || (text === savedText && extra === savedExtra)) delete d.daily[date];
+    else d.daily[date] = { text: text, extra: extra, updatedAt: Date.now() };
+    scheduleSave();
+  }
+
+  function aggKey() {
+    var r = currentRange();
+    return state.aggType + '_' + r.from + '_' + r.to;
+  }
+
+  function putAggDraft() {
+    var d = drafts();
+    var key = aggKey();
+    var raw = $('aggEditor').value;
+    if (!raw.trim()) { delete d.agg[key]; scheduleSave(); return; }
+    d.agg[key] = { text: raw, updatedAt: Date.now() };
+    var keys = Object.keys(d.agg).sort(function (a, b) {
+      return (d.agg[a].updatedAt || 0) - (d.agg[b].updatedAt || 0);
+    });
+    while (keys.length > AGG_DRAFT_MAX) delete d.agg[keys.shift()];
+    scheduleSave();
+  }
+
+  function putSummaryDraft() {
+    var d = drafts();
+    d.summary = $('sumEditor').value.trim() ? $('sumEditor').value : '';
+    scheduleSave();
+  }
+
+  function setHint(id, on, text) {
+    var el = $(id);
+    if (!el) return;
+    if (on) { el.textContent = text; el.hidden = false; }
+    else el.hidden = true;
+  }
+
+  // 当前日报是否有未保存的修改（与已保存记录比对）
+  function dailyDiffers() {
+    var rec = Store.data.reports[state.date];
+    return $('reportEditor').value.trim() !== (rec ? (rec.text || '') : '') ||
+      $('extraInput').value.trim() !== ((rec && rec.extra) || '');
+  }
+
+  function refreshDraftHint(restored) {
+    if (restored) {
+      setHint('draftHint', true, '已自动恢复上次未保存的修改；点「💾 保存」正式存入。');
+      return;
+    }
+    setHint('draftHint', dailyDiffers(),
+      '有未保存的修改（已自动暂存，切日期、关页面都不会丢）；点「💾 保存」正式存入。');
   }
 
   function wordCount() {
@@ -56,11 +142,31 @@
   /* ============================================================
    * 日报页签
    * ============================================================ */
-  function renderDaily() {
-    $('dateInput').value = state.date;
+  function renderDaily(skipStash) {
+    // 先把编辑器里尚未落盘的改动按「上一次渲染的日期」暂存下来。
+    // 切日期、存配置、导入备份等外部入口都会走到这里，统一在这一处兜住，不丢内容。
+    if (!skipStash && snapshot.date) {
+      var curText = $('reportEditor').value.trim();
+      var curExtra = $('extraInput').value.trim();
+      if (curText !== snapshot.text || curExtra !== snapshot.extra) {
+        putDailyDraft(snapshot.date, curText, curExtra);
+      }
+    }
+
     var r = Store.data.reports[state.date];
-    $('reportEditor').value = r ? r.text : '';
-    $('extraInput').value = r && r.extra ? r.extra : '';
+    var savedText = r ? (r.text || '') : '';
+    var savedExtra = (r && r.extra) || '';
+    var draft = drafts().daily[state.date];
+    var text = savedText, extra = savedExtra, restored = false;
+    if (draft && draft.text && (draft.text !== savedText || (draft.extra || '') !== savedExtra)) {
+      text = draft.text;
+      extra = draft.extra || '';
+      restored = true;
+    }
+
+    $('dateInput').value = state.date;
+    $('reportEditor').value = text;
+    $('extraInput').value = extra;
 
     // 统计行
     var cfg = Store.data.config;
@@ -82,7 +188,16 @@
     updateWordCount();
 
     $('markBtn').textContent = (r && r.submitted) ? '↩ 取消已提交' : '✅ 标记已提交';
-    manualEdited = false;
+    manualEdited = restored;
+    refreshDraftHint(restored);
+    snapshot = { date: state.date, text: text.trim(), extra: extra.trim() };
+  }
+
+  // 切换编辑中的日期（统一入口：内容先由 renderDaily 暂存）
+  function setDate(d) {
+    if (!d || d === state.date) { renderDaily(); return; }
+    state.date = d;
+    renderDaily();
   }
 
   function updateWordCount() {
@@ -174,10 +289,15 @@
     }
     if (!rec.modules) rec.modules = [];
     rec.statCounted = true;
+    rec.updatedAt = new Date().toISOString();
     Store.data.reports[state.date] = rec;
+    // 已正式落库，临时草稿使命完成（先删草稿再 save，保证落盘的就是清干净的状态）
+    delete drafts().daily[state.date];
+    clearTimeout(draftTimer);
+    draftTimer = null;
     Store.save();
     if (!silent) App.toast('已保存到本地');
-    renderDaily();
+    renderDaily(true); // 编辑器内容此刻就是库里的内容，跳过暂存，避免旧草稿回灌
     App.renderDue();
   }
 
@@ -231,6 +351,13 @@
       (n === 0 ? '　·　<span style="color:var(--warn)">先在「今日日报」里保存几天的日报再来汇总</span>' : '');
   }
 
+  // 载入当前「类型 + 范围」对应的草稿（切范围、重新打开页面都能接着改）
+  function loadAggDraft() {
+    var d = drafts().agg[aggKey()];
+    $('aggEditor').value = d ? d.text : '';
+    setHint('aggDraftHint', !!d, '已自动恢复上次未保存的草稿（切范围、关页面都不会丢）。');
+  }
+
   function generateAgg() {
     var range = currentRange();
     var result = Composer.aggregate(state.aggType, range.from, range.to, Store.data.config, Store.data.reports);
@@ -239,6 +366,8 @@
       return;
     }
     $('aggEditor').value = result.text;
+    putAggDraft();
+    setHint('aggDraftHint', false, '');
     App.toast('草稿已生成，检查修改后复制提交');
   }
 
@@ -281,6 +410,8 @@
       loadBtn.textContent = '载入';
       loadBtn.addEventListener('click', function () {
         $('aggEditor').value = it.text;
+        putAggDraft();
+        setHint('aggDraftHint', false, '');
         App.toast('已载入留档，可复制或继续修改');
       });
       var delBtn = document.createElement('button');
@@ -312,10 +443,18 @@
       : '<span style="color:var(--warn)">还没有日报记录——先用一段时间积累，总结才有内容可写。</span>';
   }
 
+  function loadSummaryDraft() {
+    var s = drafts().summary;
+    if (s) $('sumEditor').value = s;
+    setHint('sumDraftHint', !!s, '已自动恢复上次未保存的草稿（关页面也不会丢）。');
+  }
+
   function generateSummary() {
     var result = Composer.internshipSummary(Store.data.config, Store.data.reports);
     if (!result) { App.toast('还没有日报记录'); return; }
     $('sumEditor').value = result.text;
+    putSummaryDraft();
+    setHint('sumDraftHint', false, '');
     App.toast('实习总结已生成，建议通读一遍并补充个人细节');
   }
 
@@ -324,10 +463,10 @@
    * ============================================================ */
   function bind() {
     // 日报
-    $('prevDay').addEventListener('click', function () { state.date = shiftDate(state.date, -1); renderDaily(); });
-    $('nextDay').addEventListener('click', function () { state.date = shiftDate(state.date, 1); renderDaily(); });
+    $('prevDay').addEventListener('click', function () { setDate(shiftDate(state.date, -1)); });
+    $('nextDay').addEventListener('click', function () { setDate(shiftDate(state.date, 1)); });
     $('dateInput').addEventListener('change', function () {
-      if (this.value) { state.date = this.value; renderDaily(); }
+      if (this.value) setDate(this.value);
     });
     $('genBtn').addEventListener('click', generateDaily);
     $('variantBtn').addEventListener('click', generateVariant);
@@ -343,26 +482,40 @@
       var rec = Store.data.reports[state.date];
       var base = (lastGenerated && lastGenerated.date === state.date) ? lastGenerated.text : (rec ? rec.text : '');
       manualEdited = this.value !== base;
+      putDailyDraft(state.date, this.value.trim(), $('extraInput').value.trim());
+      refreshDraftHint();
+    });
+    $('extraInput').addEventListener('input', function () {
+      putDailyDraft(state.date, $('reportEditor').value.trim(), this.value.trim());
+      refreshDraftHint();
     });
 
     // 周报月报
     $('aggType').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-type]');
       if (!b) return;
+      putAggDraft();  // 先把当前范围的草稿暂存，再去载入新范围的
       state.aggType = b.dataset.type;
       Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('active', x === b); });
       renderAggStat();
+      loadAggDraft();
     });
     $('rangePicks').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-range]');
       if (!b) return;
+      putAggDraft();
       state.aggRange = b.dataset.range;
       Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('active', x === b); });
       $('customRange').hidden = state.aggRange !== 'custom';
       renderAggStat();
+      loadAggDraft();
     });
-    $('aggFrom').addEventListener('change', function () { state.aggFrom = this.value; renderAggStat(); });
-    $('aggTo').addEventListener('change', function () { state.aggTo = this.value; renderAggStat(); });
+    $('aggFrom').addEventListener('change', function () { putAggDraft(); state.aggFrom = this.value; renderAggStat(); loadAggDraft(); });
+    $('aggTo').addEventListener('change', function () { putAggDraft(); state.aggTo = this.value; renderAggStat(); loadAggDraft(); });
+    $('aggEditor').addEventListener('input', function () {
+      putAggDraft();
+      setHint('aggDraftHint', false, '');
+    });
     $('aggGenBtn').addEventListener('click', generateAgg);
     $('aggCopyBtn').addEventListener('click', function () {
       var t = $('aggEditor').value.trim();
@@ -374,6 +527,10 @@
       var t = $('aggEditor').value.trim();
       if (!t) { App.toast('先生成草稿'); return; }
       printText(t);
+    });
+    $('sumEditor').addEventListener('input', function () {
+      putSummaryDraft();
+      setHint('sumDraftHint', false, '');
     });
 
     // 实习总结
@@ -390,13 +547,59 @@
     });
   }
 
+  /* ============================================================
+   * 离开页面前兜底：把三个编辑器的内容全部落盘
+   * （手机上切后台 / 关页面不一定触发 unload，所以 pagehide 与
+   *   visibilitychange 都挂上，双保险）
+   * ============================================================ */
+  function flushAll() {
+    if (snapshot.date) {
+      var t = $('reportEditor').value.trim();
+      var e = $('extraInput').value.trim();
+      if (t !== snapshot.text || e !== snapshot.extra) putDailyDraft(snapshot.date, t, e);
+    }
+    putAggDraft();
+    putSummaryDraft();
+    flushSave();
+  }
+  window.addEventListener('pagehide', flushAll);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flushAll();
+  });
+
   window.Editor = {
-    init: function () { bind(); renderDaily(); renderAggStat(); renderSavedList(); renderSummaryStat(); },
+    init: function () {
+      bind();
+      renderDaily();
+      renderAggStat();
+      loadAggDraft();
+      renderSavedList();
+      renderSummaryStat();
+      loadSummaryDraft();
+    },
     renderDaily: renderDaily,
     renderAggStat: renderAggStat,
     renderSavedList: renderSavedList,
     renderSummaryStat: renderSummaryStat,
-    setDate: function (d) { state.date = d; renderDaily(); },
+    setDate: setDate,
+    // 整份数据被替换后（导入备份等）调用：重置快照并重绘，避免把旧内容当成草稿写回新数据
+    resync: function () {
+      snapshot = { date: null, text: '', extra: '' };
+      state.date = Store.today();
+      renderDaily();
+      renderAggStat();
+      loadAggDraft();
+      renderSavedList();
+      renderSummaryStat();
+      loadSummaryDraft();
+    },
+    // 外部改动编辑器内容后调用（如素材库插入句式）：标记为手动修改并暂存草稿
+    contentChanged: function () {
+      updateWordCount();
+      manualEdited = true;
+      putDailyDraft(state.date, $('reportEditor').value.trim(), $('extraInput').value.trim());
+      refreshDraftHint();
+    },
     copyText: copyText,
     printText: printText
   };

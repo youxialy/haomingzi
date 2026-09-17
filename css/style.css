@@ -1,31 +1,36 @@
 /* ================= 实习日报一点通 ================= */
 :root {
+  color-scheme: light;
   --bg: #f5f6f8;
   --bg-card: #ffffff;
   --text: #1f2430;
-  --text-soft: #6b7280;
+  --text-soft: #67707d;
   --border: #e5e7eb;
-  --primary: #4f6ef7;
-  --primary-dark: #3d5ae0;
+  /* 状态色已按 WCAG AA 校准：状态色/主按钮/链接文本在其背景上对比度均 ≥ 4.5:1 */
+  --primary: #3b56e0;
+  --primary-dark: #2f47c9;
   --primary-soft: #eef1fe;
-  --ok: #16a34a;
+  --on-primary: #ffffff;
+  --ok: #15803d;
   --ok-soft: #e8f7ee;
-  --warn: #d97706;
+  --warn: #b45309;
   --warn-soft: #fdf3e3;
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-soft: #fdeaea;
   --radius: 14px;
   --shadow: 0 1px 3px rgba(20, 24, 40, .06), 0 6px 18px rgba(20, 24, 40, .05);
 }
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #14161c;
   --bg-card: #1e2129;
   --text: #e7e9ee;
   --text-soft: #9aa1ad;
   --border: #303541;
-  --primary: #6d87ff;
-  --primary-dark: #5a74f2;
+  --primary: #7d95ff;
+  --primary-dark: #93a8ff;
   --primary-soft: #262d45;
+  --on-primary: #10131a;
   --ok: #34d399;
   --ok-soft: #17301f;
   --warn: #fbbf24;
@@ -62,8 +67,8 @@ a:hover { text-decoration: underline; }
   transition: all .15s ease; user-select: none; font-family: inherit;
 }
 .btn:hover { border-color: var(--primary); color: var(--primary); }
-.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
-.btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+.btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: var(--on-primary); }
 .btn.ghost { background: transparent; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.danger:hover { background: var(--danger-soft); }
@@ -139,6 +144,13 @@ textarea { resize: vertical; line-height: 1.8; }
 .editor-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--text-soft); margin-bottom: 8px; padding: 0 2px; }
 #wordCount { font-weight: 600; color: var(--primary); }
 
+/* ---------- 未保存草稿提示 ---------- */
+.draft-hint {
+  font-size: 12.5px; line-height: 1.6; color: var(--warn);
+  background: var(--warn-soft); border: 1px solid var(--warn);
+  border-radius: 8px; padding: 7px 10px; margin-bottom: 8px;
+}
+
 /* ---------- 周月报页 ---------- */
 .agg-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -147,7 +159,7 @@ textarea { resize: vertical; line-height: 1.8; }
   font-size: 14px; cursor: pointer; font-family: inherit; border-right: 1px solid var(--border);
 }
 .seg button:last-child { border-right: none; }
-.seg button.active { background: var(--primary); color: #fff; font-weight: 600; }
+.seg button.active { background: var(--primary); color: var(--on-primary); font-weight: 600; }
 .ghost-seg button.active { background: var(--primary-soft); color: var(--primary); }
 .custom-range { display: flex; align-items: center; gap: 6px; }
 .custom-range input { max-width: 160px; }

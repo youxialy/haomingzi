@@ -13,7 +13,12 @@
       moduleStats: {},     // module -> { count, lastDate }  轮换公平性统计
       customPhrases: [],   // 用户自建句式
       todos: [],           // { id, text, done }
-      settings: { theme: 'light' }
+      drafts: {            // 未保存的临时草稿（切换日期·刷新·关页面都不丢）
+        daily: {},         //   dateStr -> { text, extra, updatedAt }
+        agg: {},           //   'weekly_2026-09-14_2026-09-20' -> { text, updatedAt }
+        summary: ''        //   实习总结草稿纯文本
+      },
+      settings: { theme: '' }  // '' = 跟随系统；'light' / 'dark' = 用户显式选择
     };
   };
 

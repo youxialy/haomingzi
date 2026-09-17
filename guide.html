@@ -8,14 +8,28 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<meta name="theme-color" content="#4f6ef7">
+<meta name="theme-color" content="#3b56e0">
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="article">
 <meta property="og:title" content="实习日报怎么写？模板+句式+一键生成工具">
 <meta property="og:description" content="顶岗实习日报、周报、月报、实习总结的写作指南：栏目结构、通用模板、常用句式，配置岗位后每天 30 秒自动生成。">
 <meta property="og:url" content="https://youxialy.github.io/haomingzi/guide.html">
 <meta property="og:image" content="https://youxialy.github.io/haomingzi/icons/icon-512.png">
-<link rel="stylesheet" href="css/style.css?v=2026091402">
+<!-- 与首页同一套主题判定：必须在样式表之前，避免深色模式闪白 -->
+<script>
+(function () {
+  var t = '';
+  try {
+    var raw = localStorage.getItem('irdp_data_v1');
+    if (raw) t = (JSON.parse(raw).settings || {}).theme || '';
+  } catch (e) {}
+  if (t !== 'dark' && t !== 'light') {
+    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<link rel="stylesheet" href="css/style.css?v=2026091701">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -119,15 +133,5 @@
 </footer>
 
 <div id="toast" hidden></div>
-<script>
-// guide 页只有少量交互：主题跟随 + toast 复用样式
-(function(){
-  try {
-    var raw = localStorage.getItem('irdp_data_v1');
-    var theme = raw ? (JSON.parse(raw).settings || {}).theme : 'light';
-    if (theme) document.documentElement.dataset.theme = theme;
-  } catch(e){}
-})();
-</script>
 </body>
 </html>

@@ -36,15 +36,31 @@
   }
 
   /* ---------- 主题 ---------- */
+  // '' = 跟随系统；'light' / 'dark' = 用户显式选择（点过切换按钮）
+  var darkMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function resolvedTheme() {
+    var t = Store.data.settings.theme;
+    if (t === 'dark' || t === 'light') return t;
+    return (darkMQ && darkMQ.matches) ? 'dark' : 'light';
+  }
   function applyTheme() {
-    var theme = Store.data.settings.theme || 'light';
+    var theme = resolvedTheme();
     document.documentElement.dataset.theme = theme;
     $('themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
+    $('themeBtn').title = theme === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+    var meta = $('themeColorMeta');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#14161c' : '#3b56e0');
   }
   function toggleTheme() {
-    Store.data.settings.theme = Store.data.settings.theme === 'dark' ? 'light' : 'dark';
+    Store.data.settings.theme = resolvedTheme() === 'dark' ? 'light' : 'dark';
     Store.save();
     applyTheme();
+  }
+  // 用户没手动选过主题时，跟随系统实时变化
+  if (darkMQ) {
+    var onSystemThemeChange = function () { if (!Store.data.settings.theme) applyTheme(); };
+    if (darkMQ.addEventListener) darkMQ.addEventListener('change', onSystemThemeChange);
+    else if (darkMQ.addListener) darkMQ.addListener(onSystemThemeChange);
   }
 
   /* ============================================================
@@ -312,9 +328,10 @@
       insBtn.addEventListener('click', function () {
         var ta = $('reportEditor');
         ta.value = (ta.value ? ta.value.replace(/\n$/, '') + '\n' : '') + p;
-        Editor.renderDaily();
+        // 不能调 renderDaily()：那会把编辑器内容按库里的记录重置，插入的句子会被抹掉
+        Editor.contentChanged();
         goTab('daily');
-        toast('已插入今日日报末尾');
+        toast('已插入今日日报末尾，点「💾 保存」正式存入');
       });
       li.appendChild(span); li.appendChild(insBtn); li.appendChild(copyBtn);
       list.appendChild(li);
@@ -349,7 +366,7 @@
       Store.importJSON(json, function () {
         applyTheme();
         loadConfigToWizard();
-        Editor.renderDaily(); Editor.renderAggStat(); Editor.renderSummaryStat();
+        Editor.resync();
         Calendar.render(); Calendar.renderTodos();
         renderDue(); renderPhrases();
         $('backupCodeIn').value = '';
@@ -364,7 +381,7 @@
         Store.importJSON(reader.result, function () {
           applyTheme();
           loadConfigToWizard();
-          Editor.renderDaily(); Editor.renderAggStat(); Editor.renderSummaryStat();
+          Editor.resync();
           Calendar.render(); Calendar.renderTodos();
           renderDue(); renderPhrases();
           toast('导入成功 ✓');

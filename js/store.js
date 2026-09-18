@@ -36,7 +36,7 @@
         agg: {},           //   'weekly_2026-09-14_2026-09-20' -> { text, updatedAt }
         summary: ''        //   实习总结草稿纯文本
       },
-      settings: { theme: '' }  // '' = 跟随系统；'light' / 'dark' = 用户显式选择
+      settings: { theme: '', deviceId: '' }  // theme: '' = 跟随系统；deviceId 见 ensureDeviceId()
     };
   };
 
@@ -90,7 +90,31 @@
     // 补齐可能缺失的字段（版本兼容）
     var d = DEFAULTS();
     Object.keys(d).forEach(function (k) { if (data[k] === undefined) data[k] = d[k]; });
+    ensureDeviceId();
     return data;
+  }
+
+  /* ------------------------------------------------------------
+   * 本机标识 deviceId
+   *
+   * 用途：两个人「配置完全相同」（公司名、岗位名都留空、勾选模块一致）时，
+   * 报告的随机种子靠它区分 —— 否则同一天会产出逐字相同的日报（P2-9）。
+   * 首次启动随机生成 8 位十六进制并持久化；此后不再变化，保证「同配置同日期可复现」。
+   *
+   * ⚠️ 它是本机标识，**不参与导入**：sanitize() 不会保留备份里的 deviceId，
+   * 所以把自己的备份导到另一台设备时，对方仍用自己的 deviceId（不会串号）。
+   * ------------------------------------------------------------ */
+  function ensureDeviceId() {
+    if (!data.settings) data.settings = {};
+    if (!data.settings.deviceId) {
+      var s = '';
+      for (var i = 0; i < 8; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)];
+      data.settings.deviceId = s;
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(data));
+      } catch (e) { /* 隐私模式等写不进去就算了，本次会话内仍可用 */ }
+    }
+    return data.settings.deviceId;
   }
 
   /* ============================================================

@@ -326,10 +326,26 @@
   /* 选一条既避开近期模板、又与近期句子不雷同的表达；返回 { tpl, line }
    * 产出的句子会记入 hist.lines，保证同一篇内各栏目也互不雷同 */
   function takeFresh(rng, arr, mod, vars, hist) {
-    var pk = pickFresh(rng, arr, mod, vars, hist);
+    var pk = pickFresh(rng, arr, mod, withLex(rng, arr, vars, hist), hist);
     if (pk.tpl) hist.today[pk.tpl] = 1;   // 本篇内也不复用同一模板
     if (pk.line) hist.lines.push(pk.line);
     return pk;
+  }
+
+  /* 给 vars 补上 {lex}：从当前岗位的语域词表里随机取一个词（客户 / 病人 / 设备…）。
+   * 模板里的 {lex} 是「领域名词位」，于是同一批句式在不同岗位产出不同措辞，
+   * 跨岗位相似度才不会只剩下「脚手架 + 模板骨架」。
+   * 只有池里确实含 {lex} 模板时才消耗随机数 —— 不含 {lex} 的池行为完全不变。 */
+  function withLex(rng, arr, vars, hist) {
+    var lw = hist && hist.lexWords;
+    if (!lw || !lw.length || !arr) return vars;
+    var need = false;
+    for (var i = 0; i < arr.length; i++) { if (arr[i].indexOf('{lex}') >= 0) { need = true; break; } }
+    if (!need) return vars;
+    var v = {}, k;
+    if (vars) { for (k in vars) { if (Object.prototype.hasOwnProperty.call(vars, k)) v[k] = vars[k]; } }
+    v.lex = lw[Math.floor(rng() * lw.length) % lw.length];
+    return v;
   }
 
   /* 选一条表达（内部原语）：在「最久未用」的前 45% 里随机挑，
@@ -337,7 +353,17 @@
   function pickFresh(rng, arr, mod, vars, hist) {
     if (!arr || !arr.length) return { tpl: '', line: '' };
     var pool = candidatePool(arr, mod, hist);
-    pool = pool.slice().sort(function (a, b) { return hist.age(b) - hist.age(a); });
+    /* 按「距上次使用天数」降序取「最久未用」；
+     * age 相同时用模板内容哈希打散 —— 这里曾经是漏洞：
+     * 相同 age 保持数组原顺序，而新增句式总是**追加在池末尾**，
+     * 于是「从未用过」的新模板永远排在后面、进不了下面 headN 的头部 45%，
+     * 要等整池轮换一遍才可能被用到（新句式长期不生效的根因）。
+     * 用内容哈希而非 rng 做 tie-break：不消耗随机数，同配置仍完全可复现。 */
+    pool = pool.slice().sort(function (a, b) {
+      var d = hist.age(b) - hist.age(a);
+      if (d) return d;
+      return (hashStr(a) % 100000) - (hashStr(b) % 100000);
+    });
     var headN = Math.max(1, Math.ceil(pool.length * 0.45));
     var order = pickN(rng, pool.slice(0, headN), headN);
     var best = null, bestS = Infinity;
@@ -397,7 +423,12 @@
 
   /* ---------- 组装单日日报 ---------- */
   function buildDaily(dateStr, config, reports, stats, salt, extra, ledger) {
-    var rng = rngFor(dateStr, salt + '|' + cfgKey(config));
+    /* 种子 = 日期 + 盐 + 配置指纹 + 本机标识。
+     * 加本机标识（Store.data.settings.deviceId）是为了解决：两个人配置**完全相同**
+     * （公司名/岗位名留空、勾选模块一致）时，同一天会产出逐字相同的日报。
+     * 同一台设备上 deviceId 持久不变，所以「同配置 + 同日期 → 逐字可复现」依然成立。 */
+    var dev = (typeof Store !== 'undefined' && Store.data && Store.data.settings && Store.data.settings.deviceId) || '';
+    var rng = rngFor(dateStr, salt + '|' + cfgKey(config) + '|' + dev);
     var d = Store.parse(dateStr);
     var dow = d.getDay();
     var weekday = '星期' + '日一二三四五六'[dow];
@@ -417,6 +448,8 @@
     var planMods = pickN(rng, planPool, Math.min(2, planPool.length));
 
     var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr));
+    // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
+    hist.lexWords = (Phrases.jobLex && Phrases.jobLex[config.jobType]) || [];
     var sk = pickSkeleton(rng, hist);
     var usedTpls = [SKEL_KEY + sk.id];
 

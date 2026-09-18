@@ -209,9 +209,15 @@ section('M3 结构（抬头 / 章节编号 / 条目符号）多样性');
 /* ============================================================
  * M4 空信息句占比
  * ============================================================ */
-section('M4 空信息句（不含岗位实体、换岗位也一模一样）字数占比');
+section('M4 空信息句（不含岗位实体与岗位语域词、换岗位也一模一样）字数占比');
 (function () {
-  var mods = corpus.config.modules.slice().sort(function (a, b) { return b.length - a.length; });
+  var mods = corpus.config.modules.slice();
+  /* 岗位语域词（模板里 {lex} 的取值）也要一起掩掉再判 —— 这类句子虽然不含模块名，
+   * 但换个岗位就会换成完全不同的词（客服用「客户投诉记录」、护服用「病人生命体征」），
+   * 换岗位并不相同，不属于「空信息句」。 */
+  var lexAll = [];
+  Object.keys(Phrases.jobLex || {}).forEach(function (k) { lexAll = lexAll.concat(Phrases.jobLex[k]); });
+  var maskWords = mods.concat(lexAll).sort(function (a, b) { return b.length - a.length; });
   var rates = [];
   corpus.order.forEach(function (d) {
     var tot = 0, empty = 0;
@@ -220,7 +226,7 @@ section('M4 空信息句（不含岗位实体、换岗位也一模一样）字�
       var body = s.replace(MARK_RE, '');
       tot += body.replace(/\s/g, '').length;
       var masked = s;
-      mods.forEach(function (m) { masked = masked.split(m).join('«»'); });
+      maskWords.forEach(function (m) { masked = masked.split(m).join('«»'); });
       if (masked.indexOf('«»') < 0) empty += body.replace(/\s/g, '').length;
     });
     if (tot) rates.push(empty / tot);

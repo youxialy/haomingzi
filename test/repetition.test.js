@@ -259,6 +259,18 @@ section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
     noMod.length ? noMod.slice(0, 3).join(' / ') : '');
   ok((Phrases.skeletons || []).length >= 5, '版式骨架 ' + (Phrases.skeletons || []).length + ' 套 ≥ 5');
   ok((Composer.aggSkeletons || []).length >= 5, '聚合稿骨架 ' + (Composer.aggSkeletons || []).length + ' 套 ≥ 5');
+  // problemKinds 必须与 problems 逐条同序对齐：长度不等时 composer（problemSummaryOf）
+  // 会静默退回「逐字照搬日报 problem 原文」，周报 vs 日报的文本比对必然命中。
+  ok(Phrases.problemKinds && Phrases.problemKinds.length === Phrases.problems.length,
+    'problemKinds 与 problems 逐条同序对齐（' + ((Phrases.problemKinds || []).length) + ' vs ' + Phrases.problems.length + '）');
+  // 池内去重：池里若混入重复条，实际可用容量被虚增，台账也会重复记账
+  var dupPools = [];
+  Object.keys(rate).concat(['noteLead', 'noteAct', 'noteEnd', 'problemKinds']).forEach(function (k) {
+    var a = Phrases[k] || [], seen = {}, d = 0;
+    a.forEach(function (t) { if (seen[t]) d++; seen[t] = 1; });
+    if (d) dupPools.push(k + '(' + d + ')');
+  });
+  ok(dupPools.length === 0, '各句式池内无重复条', dupPools.join(' '));
 })();
 
 /* ============================================================

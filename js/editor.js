@@ -342,7 +342,6 @@
   function renderAggStat() {
     var range = currentRange();
     var n = Composer.inRange(Store.data.reports, range.from, range.to).length;
-    var label = state.aggType === 'weekly' ? '周报' : '月报';
     var wn = state.aggType === 'weekly' ? Composer.weekNumber(Store.data.config, range.from) : null;
     $('aggStat').innerHTML =
       '范围：<b>' + range.from + '</b> ~ <b>' + range.to + '</b>' +

@@ -33,16 +33,6 @@
 - **不做也不建议使用**自动打卡 / 代签 / 脚本刷课：收集他人账号凭证涉嫌侵犯公民个人信息，脚本绕过平台涉嫌非法获取计算机信息系统数据，均已有追责先例。本工具是纯写作辅助，与平台无任何自动化交互；
 - 每天手动打卡 + 工具写报告 = 省时且安全。
 
-## 测试
-
-生成引擎有自动化测试（Node 环境运行，不需要浏览器）：
-
-```bash
-node test/harness.js
-```
-
-覆盖：连续 14 天生成（字数达标、相邻天模块零重叠、模块周期全覆盖、相似度阈值）、周报/月报/总结聚合正确性、备份导出导入往返一致、少量模块边界情况。
-
 ## 部署上线（免费）
 
 **GitHub Pages**：
@@ -68,7 +58,7 @@ intern-report/
 ├── css/style.css       # 全部样式（深色模式 / 移动端 / 打印）
 ├── js/
 │   ├── store.js        # localStorage 数据层 + 备份码编解码 + 导入校验
-│   ├── phrases.js      # 岗位模块库 + 句式模板数据
+│   ├── phrases.js      # 岗位模块库 + 句式模板数据 + 版式骨架定义
 │   ├── generator.js    # 日报生成引擎（轮换/变体/字数/防雷同，纯函数）
 │   ├── composer.js     # 周报/月报/实习总结聚合（纯函数）
 │   ├── editor.js       # 日报/聚合/总结页签交互
@@ -79,7 +69,11 @@ intern-report/
 │   ├── harness.js          # 生成引擎测试（无依赖）
 │   ├── draft.test.js       # 草稿暂存测试（无依赖）
 │   ├── backup.test.js      # 备份码 / 导入校验测试（无依赖）
-│   └── integration.test.js # 真机冒烟：用 jsdom 把首页整个跑起来（需 jsdom）
+│   ├── integration.test.js # 真机冒烟：用 jsdom 把首页整个跑起来（需 jsdom）
+│   └── repetition.test.js  # 内容防重复回归（M1~M11，51 项，无依赖）
+├── tools/
+│   └── bump-version.js     # 一键升级缓存版本号（改 10 处 ?v= / VERSION）
+├── package.json / eslint.config.js / .editorconfig
 ├── 更新网站.bat / 跑测试.bat
 ├── sitemap.xml / robots.txt
 └── README.md
@@ -87,28 +81,54 @@ intern-report/
 
 ## 测试
 
-双击 **`跑测试.bat`** 一键跑全部四套；或分别执行：
+双击 **`跑测试.bat`** 一键跑全部五套；或 `npm test`；或分别执行：
 
 ```bash
-node test/harness.js          # 28 项断言
-node test/draft.test.js       # 23 项断言
-node test/backup.test.js      # 62 项断言
-node test/integration.test.js # 82 项断言（自动查找 jsdom，找不到才跳过）
+node test/harness.js          # 28 项断言  生成引擎
+node test/draft.test.js       # 23 项断言  草稿暂存
+node test/backup.test.js      # 62 项断言  备份码 / 导入校验
+node test/integration.test.js # 82 项断言  真机冒烟（自动查找 jsdom，找不到才跳过）
+node test/repetition.test.js  # 51 项断言  内容防重复回归（M1~M11）
 ```
 
-前三套零依赖，直接在 Node 里跑。
-第四套是**发布前最该跑的一个**：它把 `index.html` 连同 7 个脚本真实执行一遍，
+合计 **246 项断言**。前四套零依赖，直接在 Node 里跑；`integration.test.js` 需要 jsdom
+（`npm i` 后自动可用，或按 env `HMZ_JSDOM` → 项目内 `node_modules` → WorkBuddy 隔离工作区 的顺序自动查找）。
+
+**发布前最该跑 `integration.test.js`**：它把 `index.html` 连同 7 个脚本真实执行一遍，
 并模拟「配置岗位 → 生成 → 保存 → 切日期 → 导出 → 导入 → 换主题 → 开弹窗」整条链路，
 能抓住「静态检查抓不到、只有运行才暴露」的问题（绑错元素、回调抛错、导入后渲染炸掉）。
 
+**改了生成相关内容必跑 `repetition.test.js`**：它把内容防重复的 11 项指标（M1~M11）阈值固化，
+指标回退会直接红掉（例如把防重窗口改小、把句式池删条、把版式骨架删掉、把配置指纹从随机种子里去掉）。
+
+## 开发
+
+```bash
+npm i          # 安装开发依赖（eslint / jsdom），运行时仍是零依赖
+npm test       # 跑全部 5 套 246 项断言
+npm run lint   # ESLint 静态检查
+node tools/bump-version.js 2026091901   # 一键升级缓存版本号（10 处）
+```
+
+运行时（双击 `index.html`）不需要 Node，也不需要 `node_modules`。
+
 ## 发布前必读：改版本号
 
-站点靠 `?v=YYYYMMDDNN` 做缓存失效，**改完静态文件必须同步升级版本号**，否则老用户拿不到新代码：
+站点靠 `?v=YYYYMMDDNN` 做缓存失效，**改完静态文件必须同步升级版本号**，否则老用户拿不到新代码。
 
-1. `index.html` / `guide.html` 里所有 `?v=xxx`（css + 7 个 js）
-2. `sw.js` 顶部的 `VERSION`
+共 **10 处**要同步（手工容易漏），用脚本一次改完：
 
-两处改成同一个新值即可。`sw.js` 的 `activate` 会自动删掉旧版本缓存。
+```bash
+node tools/bump-version.js 2026091901   # 指定版本号
+node tools/bump-version.js              # 省略参数 = 按当天日期自动生成 YYYYMMDD01
+node tools/bump-version.js --dry-run    # 只预览会改哪些位置，不落盘
+```
+
+脚本覆盖：
+1. `index.html` / `guide.html` 里所有 `?v=xxx`（css + 7 个 js，共 9 处）
+2. `sw.js` 顶部的 `VERSION`（1 处）
+
+`sw.js` 的 `activate` 会自动删掉旧版本缓存。
 
 ## 备份码格式
 

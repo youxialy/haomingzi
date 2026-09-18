@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装开发依赖（运行时仍零依赖）
+        run: npm ci
+
+      - name: 静态检查
+        run: npm run lint
+
+      - name: 跑全部 5 套测试（246 项断言）
+        run: npm test

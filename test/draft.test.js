@@ -92,7 +92,6 @@ var Store = win.Store, Editor = win.Editor, phrases = win.Phrases;
 function $(id) { return byId[id] || (byId[id] = makeEl(id)); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 function savedDrafts() { return JSON.parse(lsStore.irdp_data_v1).drafts; }
-function lastToast() { return toasts[toasts.length - 1]; }
 
 /* ---------- 断言 ---------- */
 var pass = 0, fail = 0;

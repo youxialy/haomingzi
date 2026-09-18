@@ -1,0 +1,15 @@
+{
+  "name": "intern-report",
+  "version": "1.0.0",
+  "private": true,
+  "description": "面向顶岗实习学生的报告生成工具：一次配置岗位，每天 30 秒生成日报，周报月报实习总结一键汇总。运行时零依赖。",
+  "scripts": {
+    "test": "node test/harness.js && node test/draft.test.js && node test/backup.test.js && node test/integration.test.js && node test/repetition.test.js",
+    "lint": "eslint js test tools sw.js",
+    "bump": "node tools/bump-version.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.15.0",
+    "jsdom": "^25.0.1"
+  }
+}

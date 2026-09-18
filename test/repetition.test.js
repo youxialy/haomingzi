@@ -497,7 +497,7 @@ section('M10 字数下限参数矩阵（300 / 500 / 800 字）');
     var short = 0, bad = 0;
     c.order.forEach(function (d) {
       if (Generator.charCount(c.reports[d].text) < cs.mw) short++;
-      var t = c.reports[d].text, m;
+      var t = c.reports[d].text;
       var re = new RegExp(Generator.BAD_PAIR.source, 'g');
       while ((re.exec(t))) bad++;
     });

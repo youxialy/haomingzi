@@ -1,0 +1,21 @@
+# 编辑器统一配置 —— 消除「行尾 / 缩进」造成的无意义 diff
+# 仓库统一 LF（Windows 下由 git core.autocrlf 处理工作区转换）
+# ⚠️ 不要删 [*.bat] 段：Windows 批处理必须是 CRLF，否则 cmd 解析会出错
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.bat]
+end_of_line = crlf
+
+[*.yml]
+indent_size = 2

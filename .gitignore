@@ -1,0 +1,9 @@
+# 运行时零依赖：node_modules 只是开发用（eslint / jsdom），不入库
+node_modules/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

@@ -81,13 +81,22 @@ check(days.every(function (d) { return reports[d]; }), '14 天全部生成成功
 var wordOk = days.every(function (d) { return Generator.charCount(reports[d].text) >= 300; });
 check(wordOk, '每天字数 ≥ 300（实际：' + days.map(function (d) { return Generator.charCount(reports[d].text); }).join('/') + '）');
 
-// b. 相邻两天模块不重叠
-var overlap = false;
+/* b. 相邻两天模块重叠受限
+ * 每天出 4 条、模块池 7 个：昨天用掉 4 个只剩 3 个，数学上不可能零重叠
+ * —— 任意两个 4 元子集在 7 元全集里的交至少 1 个（|A∩B| ≥ |A|+|B|-|全集|）。
+ * 真正要守住的是「别连着写同样的事」，所以按组合下界给出允许的最大重叠数；
+ * 内容层面的防线是紧接着的「相邻两天相似度」断言。 */
+var takeN = reports[days[0]].modules.length;
+var overlapCap = Math.max(0, 2 * takeN - config.modules.length);
+var worstOverlap = 0, worstAt = '';
 for (var i2 = 1; i2 < days.length; i2++) {
   var prev = reports[days[i2 - 1]].modules, curr = reports[days[i2]].modules;
-  if (curr.some(function (m) { return prev.indexOf(m) >= 0; })) { overlap = true; console.log('    重叠：' + days[i2] + ' → ' + curr.join(',')); }
+  var ov = curr.filter(function (m) { return prev.indexOf(m) >= 0; }).length;
+  if (ov > worstOverlap) { worstOverlap = ov; worstAt = days[i2]; }
 }
-check(!overlap, '相邻两天模块完全不重叠');
+check(worstOverlap <= overlapCap,
+  '相邻两天模块重叠 ≤ ' + overlapCap + ' 个（每天 ' + takeN + ' 条 / 池 ' + config.modules.length +
+  ' 个；实测最大 ' + worstOverlap + (worstAt ? ' @ ' + worstAt : '') + '）');
 
 // c. 周期内模块覆盖（7 个模块，14 天应全部出现过）
 var used = {};
@@ -157,8 +166,18 @@ cfg7.sections = [
   { key: 'plans', title: '明日安排', on: false }
 ];
 var r7 = Generator.buildDaily('2026-09-14', cfg7, {}, {}, 0, '');
-check(r7.text.indexOf('一、今日工作内容') >= 0, '自定义标题生效且编号正确');
-check(r7.text.indexOf('二、问题与反思') >= 0, '第二栏目为问题与反思');
+/* 章节编号样式由骨架决定（一、 / （一） / 【一】 / 一）），断言不该绑死某一种 ——
+ * 真正要验的是「用户改的标题生效」+「编号顺序正确」（第一个栏目为 1、第二个为 2）。
+ * 之前写死 '一、今日工作内容'，骨架一换位置就误报失败。 */
+function secHeadOf(text, title) {
+  var hit = '';
+  text.split('\n').forEach(function (l) { if (!hit && l.indexOf(title) >= 0) hit = l.trim(); });
+  return hit;
+}
+var head7a = secHeadOf(r7.text, '今日工作内容');
+var head7b = secHeadOf(r7.text, '问题与反思');
+check(/^[（【]?\s*(一|1)\s*[、）】]/.test(head7a), '自定义标题生效且编号为 1（' + head7a + '）');
+check(/^[（【]?\s*(二|2)\s*[、）】]/.test(head7b), '第二栏目为问题与反思且编号为 2（' + head7b + '）');
 check(r7.text.indexOf('收获与学习') < 0 && r7.text.indexOf('明日计划') < 0, '关闭的栏目不再出现');
 // 关闭 problems 栏 → 问题字段为空 → 周报聚合走「平稳顺利」兜底
 var cfg7b = JSON.parse(JSON.stringify(config));

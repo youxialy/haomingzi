@@ -452,16 +452,40 @@
   }
 
   /* ---------- 模块轮换 ---------- */
+  /* 每天的工作项条数 = 当天选几个模块（「今日完成」按模块逐条写）。
+   *
+   * 为什么从 3 提到 4：一篇日报的「今日完成 / 收获 / 问题与解决 / 明日计划 / 补充记录」
+   * 合计要写 10+ 次模块名。每天只选 3 个模块时，每模块 3 次的额度只有 9 个槽位，
+   * 必然不够 —— 兜底一放宽，同一模块名就会在一篇里出现 4~7 次，
+   * 这是「读着不像人写」的主因（真实反馈：一篇里「短视频拍摄剪辑」出现 6 次）。
+   * 选 4 个模块后额度升到 12 个，篇内峰值能压到 ≤3 次，日报本身也更饱满。 */
+  var DAILY_ITEMS = 4;
+
   function pickModules(modules, stats, yesterdayMods, rng) {
-    var take = modules.length >= 5 ? 3 : (modules.length >= 3 ? 2 : Math.max(1, modules.length));
-    var pool = modules.filter(function (m) { return yesterdayMods.indexOf(m) < 0; });
-    if (pool.length < take) pool = modules.slice(); // 模块太少时允许与昨日重叠
-    // 使用次数少的优先进入候选池（保证周期内全覆盖）
-    pool.sort(function (a, b) {
+    /* 条数 = min(4, 模块池大小)。不再按「池子够不够 5 个」分档：
+     * 用户勾了 3 个模块就该出 3 条（原来只出 2 条，日报读起来很空）；
+     * 勾了 7 个就出 4 条。上限 4 是为了让「今日完成」不像流水账。 */
+    var take = Math.min(DAILY_ITEMS, modules.length);
+    var byUse = function (a, b) {
       return ((stats[a] ? stats[a].count : 0) - (stats[b] ? stats[b].count : 0));
-    });
-    var head = pool.slice(0, Math.max(take, Math.ceil(pool.length * 0.7)));
-    return pickN(rng, head, Math.min(take, head.length));
+    };
+    // 首选昨天没用过的模块（相邻两天尽量不写同样的事）
+    var fresh = modules.filter(function (m) { return yesterdayMods.indexOf(m) < 0; }).sort(byUse);
+    if (fresh.length >= take) {
+      // 在最久未用的一批里随机挑，兼顾「周期内全覆盖」与多样性
+      var head = fresh.slice(0, Math.max(take, Math.ceil(fresh.length * 0.7)));
+      return pickN(rng, head, Math.min(take, head.length));
+    }
+    /* 模块池只有 6~7 个、却要写 4 条：昨天用掉 4 个只剩 3 个 ——
+     * 数学上不可能与昨天完全不重叠。退化为「尽量少重叠」：
+     * 把没用过的全用上，再按「全局最久未用」从昨天用过的里补差额（只差 1~2 个）。 */
+    var stale = yesterdayMods.filter(function (m) { return modules.indexOf(m) >= 0; }).sort(byUse);
+    var out = pickN(rng, fresh, fresh.length);
+    // 注意：need 必须先算出来。写成 `i < take - out.length` 会因为 push 后 out.length 自增，
+    // 循环提前一轮结束（曾导致 6 模块岗位每天只出 3 条）。
+    var need = take - out.length;
+    for (var i = 0; i < need && i < stale.length; i++) out.push(stale[i]);
+    return out;
   }
 
   function lastNDates(reports, dateStr, n) {
@@ -653,10 +677,12 @@
     var need = min ? (min - charCount(lines.join('\n'))) : 0;
     var noteLines = [], tailLines = [], guard = 0;
     while (need > 0 && guard < 28) {
-      // 补充记录沿用「按序号轮换当天模块」的老策略，**刻意不走模块预算**：
-      // 800 字档会补 10+ 条记录，一旦让它们参与预算、频繁触发全池兜底，
-      // 不同天的模块组合就会趋同 —— 实测整篇相似度从 5% 反弹到 21%（超 15% 红线）。
-      var nm = mods[guard % mods.length] || '';
+      /* 补充记录的模块：从当天模块里挑「本篇用得最少」的。
+       * 原来是 guard % mods.length 顺序轮换 —— 与正文里的模块撞车概率高
+       * （用户真实日报里「短视频拍摄剪辑」出现 6 次，有一段就来自这里）。
+       * 但也刻意**不引入全池兜底**：800 字档要补 10+ 条记录，一旦补到全池，
+       * 不同天的模块组合就会趋同，实测整篇相似度从 5% 反弹到 21%（超 15% 红线）。 */
+      var nm = pickCapped(rng, mods, used, 3) || mods[0] || '';
       var nv = { module: nm, weekday: weekday, dayN: dayN };
       var parts = [];
       // 引导句必带 {module}：补充记录挂在「今日完成」栏目里，不绑定到某项工作就会读成

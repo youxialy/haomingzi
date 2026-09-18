@@ -618,6 +618,58 @@ section('M11 聚合稿跨配置隔离（同区间、不同配置）');
 })();
 
 /* ============================================================
+ * M12 每天工作项条数与同篇模块重复
+ * 用户真实反馈：一篇日报里「短视频拍摄剪辑」出现 6 次，读着不像人写 ——
+ * 这是「重复」在用户眼里的真实所指（不是句子层面）。
+ * 成因：模块名在「今日完成 / 收获 / 问题 / 计划 / 补充记录」各自独立选用，
+ * 彼此不知道对方用过；一篇合计要写 10+ 次模块名，而模块池只有 6~7 个。
+ * 修法：每篇维护「模块 → 已用次数」预算（cap = 3），每天工作项 3 → 4 条（额度 9 → 12）。
+ * ============================================================ */
+section('M12 每天工作项条数与同篇模块重复');
+(function () {
+  var CASES = ['newmedia', 'service', 'nurse', 'general', 'admin'];
+  var worstPeak = 0, worstPeakJob = '', worstRate = 0, worstRateJob = '';
+  CASES.forEach(function (job) {
+    var c = buildCorpus(job, 120, 300);
+    var mods = Phrases.jobTypes[job].modules;
+    var want = Math.min(4, mods.length);
+    var wrongItems = 0, over4 = 0, peak = 0;
+    c.order.forEach(function (d) {
+      var rec = c.reports[d];
+      if ((rec.modules || []).length !== want) wrongItems++;
+      var mx = 0;
+      mods.forEach(function (m) { var n = rec.text.split(m).length - 1; if (n > mx) mx = n; });
+      if (mx >= 4) over4++;
+      if (mx > peak) peak = mx;
+    });
+    var rate = over4 / c.order.length;
+    console.log('  · ' + job + '（池 ' + mods.length + '）：每天 ' + want + ' 条，单篇峰值 ' + peak +
+      '，某模块 ≥4 次的篇数 ' + pct(rate));
+    ok(wrongItems === 0, job + '：每天 ' + want + ' 条工作项', '不符 ' + wrongItems + ' 篇');
+    if (peak > worstPeak) { worstPeak = peak; worstPeakJob = job; }
+    if (rate > worstRate) { worstRate = rate; worstRateJob = job; }
+  });
+  ok(worstPeak <= 4, '单篇同模块名最多出现 4 次（实测峰值 ' + worstPeak + ' @ ' + worstPeakJob + '；修复前 7）');
+  ok(worstRate < 0.5, '某模块 ≥4 次的篇数占比 ' + pct(worstRate) + ' < 50%（@ ' + worstRateJob + '；修复前 62.5%）');
+
+  /* 用户勾几个模块就写几条 —— 旧版「池子不足 5 个就砍到 2 条」会让只勾 3 个模块的人
+   * 每天只拿到 2 条，日报读起来很空。 */
+  var smallMods = ['整理工作资料与文档', '参加晨会', '学习岗位业务知识'];
+  var smallCfg = {
+    jobType: 'general', modules: smallMods.slice(), startDate: '2026-09-07', endDate: '2026-09-26',
+    minWords: 300, dailyLoad: 10, company: '某某公司', jobTitle: '通用/其他'
+  };
+  var smallRep = {}, smallStats = {}, badSmall = 0;
+  for (var si = 0; si < 20; si++) {
+    var sds = fmt(addDays(new Date(2026, 8, 7), si));
+    var sr = Generator.generateDaily(sds, smallCfg, smallRep, smallStats, '');
+    if ((sr.modules || []).length !== 3) badSmall++;
+    smallRep[sds] = { date: sds, text: sr.text, modules: sr.modules, extra: sr.extra, problem: sr.problem, tpls: sr.tpls || [] };
+  }
+  ok(badSmall === 0, '只勾 3 个模块时每天出 3 条工作项', '不符 ' + badSmall + ' 篇');
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

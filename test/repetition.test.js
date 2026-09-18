@@ -670,6 +670,73 @@ section('M12 每天工作项条数与同篇模块重复');
 })();
 
 /* ============================================================
+ * M13 时态错位（「今日完成」栏目里冒出"明天打算…"）
+ * 用户反馈：今日完成里出现「明天准备把今天没吃透的部分再补一补。」——
+ * 明明是当天完成的事，却写成了对明天的预告。
+ * 根源：noteEnd 池（补充记录的收束句，会挂进「今日完成」）里有 13 条以未来动作开头的
+ * 句子，doneActivity 池另 1 条。已把 10 条改写成带 {module} 的形式挪到 planTail
+ * （那里本就是「明日计划」，语义正对），另 2 条改成回顾表述。
+ *
+ * 判定口径：把句子按 ，。；、 切分子句，**任一子句以未来时间词开头** = 错位。
+ * 「方便明天接着用」「没有留到明天」这类目的状语/否定式不算 —— 它们的主干动作是今天做的。
+ * （这条口径要拿捏准：done 池有 4 条含"明天"，全是合理提及，不能一竿子打掉。）
+ * ============================================================ */
+section('M13 「今日完成」栏目的时态错位');
+(function () {
+  var DONE_POOLS = ['done', 'doneActivity', 'noteLead', 'noteAct', 'noteEnd'];
+  var FUT_LEAD = /^(明天|明日|次日|下次|接下来|下一步|日后|后续)/;
+  var OFF = /(^|[，。；])\s*(明天|明日|次日|下次|接下来|下一步|日后|后续)/;
+  var CLAUSE = /[，。；、]/;
+
+  // ① 池级别（根因所在，最稳的一条）
+  var off = [];
+  DONE_POOLS.forEach(function (k) {
+    (Phrases[k] || []).forEach(function (t) {
+      t.split(CLAUSE).forEach(function (c) {
+        if (FUT_LEAD.test(c.trim())) off.push(k + ' → ' + t);
+      });
+    });
+  });
+  console.log('  · 「今日完成」用到的池：' + DONE_POOLS.join(' / ') +
+    '（共 ' + DONE_POOLS.reduce(function (a, k) { return a + (Phrases[k] || []).length; }, 0) + ' 条）');
+  ok(off.length === 0, '这 ' + DONE_POOLS.length + ' 个池里没有「未来动作开头」的句子',
+    off.slice(0, 3).join('  |  '));
+
+  // ② 搬走的句子确实落到了 planTail（否则就是删掉了，白丢内容）
+  ok((Phrases.planTail || []).length >= 35, 'planTail 承接搬迁句后仍有 ' + (Phrases.planTail || []).length + ' 条 ≥ 35');
+  ok((Phrases.planTail || []).every(function (t) { return t.indexOf('{module}') >= 0; }),
+    'planTail 每条都含 {module}（接在计划条目后面才读得通）');
+
+  // ③ 端到端：600 字档最容易触发补充记录，用它抽验成稿
+  var SEC = /^[（【]?\s*(一|二|三|四|五|1|2|3|4|5)\s*[、）】]/;
+  var HEAD_WORDS = /(今日完成|今日工作|完成情况|收获|学习|问题|解决|反思|计划|安排|明日|后续)/;
+  function isHeading(t) {
+    // ⚠️ 骨架的条目符号也有 `（1）` 形式，只看"行首编号"会把条目误当标题
+    return SEC.test(t) && HEAD_WORDS.test(t) && !/[，。；]/.test(t);
+  }
+  function doneBlock(text) {
+    var out = [], on = false;
+    text.split('\n').forEach(function (l) {
+      var t = l.trim();
+      if (!t) return;
+      if (isHeading(t)) { on = /完成/.test(t); return; }
+      if (on) out.push(t);
+    });
+    return out;
+  }
+  var c13 = buildCorpus('newmedia', 45, 600);
+  var total = 0, bad = 0, sample = '';
+  c13.order.forEach(function (d) {
+    doneBlock(c13.reports[d].text).forEach(function (l) {
+      total++;
+      if (OFF.test(l)) { bad++; if (!sample) sample = d + ' ' + l; }
+    });
+  });
+  console.log('  · 45 天 / 600 字：「今日完成」共 ' + total + ' 行，时态错位 ' + bad + ' 行');
+  ok(bad === 0, '成稿里「今日完成」栏目时态错位 0 行（改前 25 行 / 7.02%）', sample);
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

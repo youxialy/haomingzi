@@ -681,6 +681,23 @@ section('M12 每天工作项条数与同篇模块重复');
  * 「方便明天接着用」「没有留到明天」这类目的状语/否定式不算 —— 它们的主干动作是今天做的。
  * （这条口径要拿捏准：done 池有 4 条含"明天"，全是合理提及，不能一竿子打掉。）
  * ============================================================ */
+/* 「今日完成」区块提取 —— M13 / M14 共用。
+ * ⚠️ 判断「这一行是不是栏目标题」不能只看行首编号：骨架的条目符号也有 `（1）` 形式，
+ * 会把正文条目误当标题、导致区块边界错乱（我因此误报过一次"还有残留"）。 */
+var SEC_RE = /^[（【]?\s*(一|二|三|四|五|1|2|3|4|5)\s*[、）】]/;
+var HEAD_WORDS_RE = /(今日完成|今日工作|完成情况|收获|学习|问题|解决|反思|计划|安排|明日|后续)/;
+function isSectionHead(t) { return SEC_RE.test(t) && HEAD_WORDS_RE.test(t) && !/[，。；]/.test(t); }
+function doneBlockOf(text) {
+  var out = [], on = false;
+  text.split('\n').forEach(function (l) {
+    var t = l.trim();
+    if (!t) return;
+    if (isSectionHead(t)) { on = /完成/.test(t); return; }
+    if (on) out.push(t);
+  });
+  return out;
+}
+
 section('M13 「今日完成」栏目的时态错位');
 (function () {
   var DONE_POOLS = ['done', 'doneActivity', 'noteLead', 'noteAct', 'noteEnd'];
@@ -708,32 +725,77 @@ section('M13 「今日完成」栏目的时态错位');
     'planTail 每条都含 {module}（接在计划条目后面才读得通）');
 
   // ③ 端到端：600 字档最容易触发补充记录，用它抽验成稿
-  var SEC = /^[（【]?\s*(一|二|三|四|五|1|2|3|4|5)\s*[、）】]/;
-  var HEAD_WORDS = /(今日完成|今日工作|完成情况|收获|学习|问题|解决|反思|计划|安排|明日|后续)/;
-  function isHeading(t) {
-    // ⚠️ 骨架的条目符号也有 `（1）` 形式，只看"行首编号"会把条目误当标题
-    return SEC.test(t) && HEAD_WORDS.test(t) && !/[，。；]/.test(t);
-  }
-  function doneBlock(text) {
-    var out = [], on = false;
-    text.split('\n').forEach(function (l) {
-      var t = l.trim();
-      if (!t) return;
-      if (isHeading(t)) { on = /完成/.test(t); return; }
-      if (on) out.push(t);
-    });
-    return out;
-  }
   var c13 = buildCorpus('newmedia', 45, 600);
   var total = 0, bad = 0, sample = '';
   c13.order.forEach(function (d) {
-    doneBlock(c13.reports[d].text).forEach(function (l) {
+    doneBlockOf(c13.reports[d].text).forEach(function (l) {
       total++;
       if (OFF.test(l)) { bad++; if (!sample) sample = d + ' ' + l; }
     });
   });
   console.log('  · 45 天 / 600 字：「今日完成」共 ' + total + ' 行，时态错位 ' + bad + ' 行');
   ok(bad === 0, '成稿里「今日完成」栏目时态错位 0 行（改前 25 行 / 7.02%）', sample);
+})();
+
+/* ============================================================
+ * M14 补充记录的开场雷同（同篇内）
+ * 用户反馈：一篇里几条补充记录开头一样，读起来像排比（三条都是「XX以外…」）。
+ * 改前实测（45 天 / 600 字）：同篇内模块名重复 97.8%、「模块名后 2 字」重复 64.4%。
+ * 成因：补充记录挂在「今日完成」末尾续编号，模块由 pickCapped 从当天 4 个模块里随机挑
+ * （cap=3 允许重复）；引子句池里 80% 以 {module} 打头、三大簇就占 78%。
+ * 修法（generator.js）：① noteMods 模块按轮次去重；② noteShapes 开场形态去重。
+ * ⚠️ 试过「一轮用完后扩到当天全池」：600 字档重复降到 6.7%，但 800 字档篇对 16.7%、
+ *    周报掩名 0.562 双双越线，已回退 —— 候选池一大，不同天的模块组合就趋同。
+ * ============================================================ */
+section('M14 补充记录的开场雷同（同篇内）');
+(function () {
+  var shapeOf = function (t) {
+    var i = t.indexOf('{module}');
+    return i === 0 ? t.slice(8, 10) : t.slice(0, 2);   // {module} 占 8 个字符
+  };
+
+  // ① 池子层面：开场形态不能过度集中（防止以后有人往一个形态里猛加句子）
+  var cnt = {}, n = 0;
+  Phrases.noteLead.forEach(function (t) { var k = shapeOf(t); cnt[k] = (cnt[k] || 0) + 1; n++; });
+  var maxShape = '', maxN = 0;
+  Object.keys(cnt).forEach(function (k) { if (cnt[k] > maxN) { maxN = cnt[k]; maxShape = k; } });
+  console.log('  · noteLead ' + n + ' 条 / ' + Object.keys(cnt).length + ' 种开场形态，最大簇「' +
+    maxShape + '…」' + maxN + ' 条');
+  ok(maxN / n < 0.4, 'noteLead 最大形态簇占比 ' + pct(maxN / n) + ' < 40%');
+
+  // ② 成稿层面：把「今日完成」区块里超出当天模块数的行视作补充记录
+  var c14 = buildCorpus('newmedia', 45, 600);
+  var ITEM = /^([（(]?\s*\d+\s*[）).、]\s*|[・•·\-*]\s*|[①②③④⑤⑥⑦⑧⑨⑩]\s*)/;
+  var days = 0, modDupDays = 0, shapeDupDays = 0, notesTotal = 0;
+  c14.order.forEach(function (d) {
+    var rec = c14.reports[d];
+    var notes = doneBlockOf(rec.text).slice((rec.modules || []).length);
+    if (!notes.length) return;
+    days++; notesTotal += notes.length;
+    var mods = [], shapes = [];
+    notes.forEach(function (line) {
+      var body = line.replace(ITEM, '').trim();
+      var mod = '', after = '';
+      var sorted = (rec.modules || []).slice().sort(function (a, b) { return b.length - a.length; });
+      for (var k = 0; k < sorted.length; k++) {
+        var idx = body.indexOf(sorted[k]);
+        if (idx >= 0) { mod = sorted[k]; after = body.slice(idx + sorted[k].length, idx + sorted[k].length + 2); break; }
+      }
+      mods.push(mod || '-');
+      shapes.push(mod ? after : body.slice(0, 2));
+    });
+    var seenM = {}, seenS = {}, dm = false, dsx = false;
+    mods.forEach(function (m) { if (seenM[m]) dm = true; seenM[m] = 1; });
+    shapes.forEach(function (s) { if (seenS[s]) dsx = true; seenS[s] = 1; });
+    if (dm) modDupDays++;
+    if (dsx) shapeDupDays++;
+  });
+  console.log('  · 45 天 / 600 字：' + days + ' 天有补充记录（共 ' + notesTotal + ' 条，篇均 ' +
+    (notesTotal / (days || 1)).toFixed(1) + ' 条）；模块名重复 ' + pct(modDupDays / (days || 1)) +
+    '，开场形态重复 ' + pct(shapeDupDays / (days || 1)));
+  ok(shapeDupDays === 0, '同篇补充记录开场形态重复 0 天（改前 64.4%）');
+  ok(modDupDays / (days || 1) < 0.25,
+    '同篇补充记录模块名重复 ' + pct(modDupDays / (days || 1)) + ' < 25%（改前 97.8%）');
 })();
 
 /* ============================================================

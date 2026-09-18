@@ -676,18 +676,43 @@
     var min = config.minWords || 0;
     var need = min ? (min - charCount(lines.join('\n'))) : 0;
     var noteLines = [], tailLines = [], guard = 0;
+    /* 补充记录的两层「同篇去重」。
+     * 用户反馈：一篇里几条补充记录开头雷同（三条都是「XX以外…」）。实测 45 天 / 600 字：
+     * 同篇内**模块名重复 97.8%**、「模块名后 2 字」重复 64.4%、篇均 4 条。
+     *   ① noteMods —— 本轮用过的模块不再选（4 个模块 → 前 4 条各不相同）；
+     *      一圈用满才开新一轮，避免第 5 条与第 1 条紧挨着撞车。
+     *   ② noteShapes —— 引子句的「开场形态」不重复。池里 80% 的句子以 {module} 打头，
+     *      且「这块…」「之外…」「今天…」三簇就占了 78%，不按形态去重必然撞开头。
+     * ⚠️ 这**不是**「挑全局用得最少的」——那种写法会把每天的模块集合推向固定，
+     *    整篇相似度实测从 3.8% 反弹到 16.3%（第一步踩过的弯路）。 */
+    var noteMods = {}, noteShapes = {};
+    var leadShape = function (t) {
+      var i = t.indexOf('{module}');
+      return i === 0 ? t.slice(8, 10) : t.slice(0, 2);   // {module} 占 8 个字符
+    };
     while (need > 0 && guard < 28) {
-      /* 补充记录的模块：从当天模块里挑「本篇用得最少」的。
-       * 原来是 guard % mods.length 顺序轮换 —— 与正文里的模块撞车概率高
-       * （用户真实日报里「短视频拍摄剪辑」出现 6 次，有一段就来自这里）。
-       * 但也刻意**不引入全池兜底**：800 字档要补 10+ 条记录，一旦补到全池，
-       * 不同天的模块组合就会趋同，实测整篇相似度从 5% 反弹到 21%（超 15% 红线）。 */
-      var nm = pickCapped(rng, mods, used, 3) || mods[0] || '';
+      /* 补充记录的模块：只在本轮没用过的模块里挑，且受「每模块 ≤3 次」的总预算约束。
+       * 原先是 pickCapped(rng, mods, used, 3) —— cap 允许同一模块出现到 3 次，
+       * 于是 4 条补充记录里几乎必有重复（用户那篇「短视频拍摄剪辑」出现 6 次，一段来自这里）。
+       * 同样**不引入全池兜底**：800 字档要补 10+ 条，一旦补到全池，不同天的模块组合就会趋同，
+       * 实测整篇相似度从 5% 反弹到 21%。 */
+      /* ⚠️ 不要在这里扩到「当天全池」。试过：一轮用完后从 config.modules 里挑没用过的模块，
+       * 600 字档的模块重复确实从 15.6% 降到 6.7%，但代价是两条红线失守 ——
+       * 800 字档 ≥0.5 篇对 16.7%（>15%）、周报掩名相似度 0.562（>0.55）。
+       * 原因和第一步的弯路同源：候选池一大，不同天的模块组合就趋同。
+       * 800 字档篇均补 7.2 条、全池只有 7 个模块，重复是数学必然 —— 留待"扩模块池"解决。 */
+      var freshMods = mods.filter(function (m) { return !noteMods[m]; });
+      if (!freshMods.length) { noteMods = {}; freshMods = mods.slice(); }   // 一轮用完，开新一轮
+      var nm = pickCapped(rng, freshMods, used, 3) || freshMods[0] || mods[0] || '';
+      noteMods[nm] = 1;
       var nv = { module: nm, weekday: weekday, dayN: dayN };
       var parts = [];
       // 引导句必带 {module}：补充记录挂在「今日完成」栏目里，不绑定到某项工作就会读成
       // 「先做了两遍摸底，再正式下手做。」这种和上文完全脱节的句子（初版 22% 概率省略引子，已去掉）。
-      var lead = takeFresh(rng, Phrases.noteLead, nm, nv, hist);
+      var leadCand = Phrases.noteLead.filter(function (t) { return !noteShapes[leadShape(t)]; });
+      if (!leadCand.length) { noteShapes = {}; leadCand = Phrases.noteLead; }
+      var lead = takeFresh(rng, leadCand, nm, nv, hist);
+      if (lead.tpl) noteShapes[leadShape(lead.tpl)] = 1;
       usedTpls.push(lead.tpl);
       parts.push(lead.line);
       var actN = rng() < 0.5 ? 2 : 1;

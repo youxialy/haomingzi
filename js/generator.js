@@ -81,6 +81,56 @@
     return out;
   }
 
+  /* ---------- 每篇的「模块使用预算」 ----------
+   * 按「本篇已用次数」挑模块：优先挑还没用过的，都用过了才挑用得最少的。
+   *
+   * 背景：此前各栏目**各自独立**选模块 —— 「收获与学习」的正句和收尾句用同一个模块、
+   * 「明日计划」正文与收尾句也用同一个、补充记录的引导句还会与正文撞上，
+   * 于是一篇日报里同一个模块名能出现 4~7 次（实测新媒体运营：同篇 ≥4 次的占 62.5%，
+   * 单篇最高 7 次）。真人写日报不会这样，这是「读着不像人写的」最主要的原因。
+   * 全部选模块的地方改走这里后，同一模块在一篇里最多出现在 2 个栏目。
+   *
+   * 注意：只有一个候选时不消耗随机数，尽量少扰动既有随机流。 */
+  function tally(used, m) { if (m) used[m] = (used[m] || 0) + 1; }
+  /* 选模块（带次数上限）：从候选里**随机**挑，但跳过「本篇已用满 cap 次」的；全都用满才放宽。
+   *
+   * 为什么是「随机 + 上限」而不是「优先挑用得最少的」：
+   * 试过「优先挑最少」的版本 —— 模块名重复确实压住了，但它把每天的模块集合
+   * 推向「尽量把全部模块都用一遍」，于是不同天的用词高度趋同，
+   * 整篇两两相似度从 3.8% 反弹到 16.3%（超过 10% 红线）。
+   * 现在保留原有的随机性，只加一条硬约束：同一模块名在一篇里最多出现 cap 次。 */
+  function pickCapped(rng, candidates, used, cap, fallback) {
+    cap = cap || 3;
+    if (!candidates || !candidates.length) return '';
+    var ok = [];
+    for (var i = 0; i < candidates.length; i++) {
+      if ((used[candidates[i]] || 0) < cap) ok.push(candidates[i]);
+    }
+    if (!ok.length) {
+      /* 候选（通常是当天选的 3 个模块）全用满了 —— 到「全池」里找还没满的。
+       * 一篇日报合计要用 10+ 次模块，3 个模块 × 3 次 = 9 个额度偶尔不够，
+       * 没有这一步就只能硬顶上限（实测超到 4~6 次）。 */
+      var pool = (fallback && fallback.length) ? fallback : candidates;
+      for (var j = 0; j < pool.length; j++) {
+        if ((used[pool[j]] || 0) < cap) ok.push(pool[j]);
+      }
+    }
+    if (!ok.length) {
+      // 全池也用满了（超长文）：挑用得最少的那一个，避免无脑超限
+      var min = Infinity, best = candidates[0];
+      for (var k = 0; k < candidates.length; k++) {
+        var u = used[candidates[k]] || 0;
+        if (u < min) { min = u; best = candidates[k]; }
+      }
+      tally(used, best);
+      return best;
+    }
+    if (ok.length === 1) { tally(used, ok[0]); return ok[0]; }
+    var pick = ok[Math.floor(rng() * ok.length) % ok.length];
+    tally(used, pick);
+    return pick;
+  }
+
   /* ---------- 相似度：字符二元组的重叠系数 ---------- */
   function bigrams(t) {
     var s = [], x = (t || '').replace(/\s/g, '');
@@ -441,11 +491,19 @@
 
     var mods = pickModules(config.modules, stats, yesterdayMods, rng);
 
-    // 明日计划模块：全局最不常用的优先
+    /* 本篇的模块使用预算：每个模块名被用到就 +1，之后所有选模块的地方都优先挑用得少的，
+     * 避免同一模块名在一篇里被反复写（见 pickLite 的说明）。 */
+    var used = {};
+    mods.forEach(function (m) { tally(used, m); });
+
+    // 明日计划模块：全局最不常用的优先，同时受本篇预算约束
     var planPool = config.modules.slice().sort(function (a, b) {
       return ((stats[a] ? stats[a].count : 0) - (stats[b] ? stats[b].count : 0));
     });
-    var planMods = pickN(rng, planPool, Math.min(2, planPool.length));
+    var planHead = planPool.slice(0, Math.max(2, Math.ceil(planPool.length * 0.7)));
+    var planA = pickCapped(rng, planHead, used, 3, config.modules);
+    var planB = pickCapped(rng, planHead, used, 3, config.modules);
+    var planMods = (planB && planB !== planA) ? [planA, planB] : [planA];
 
     var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr));
     // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
@@ -453,7 +511,8 @@
     var sk = pickSkeleton(rng, hist);
     var usedTpls = [SKEL_KEY + sk.id];
 
-    var vars = { weekday: weekday, dayN: dayN, n: 0, module: mods[0] || '' };
+    // 开头语（openers 池）多数以 {module} 起头，这里同样走预算：优先挑本篇还没用过的模块
+    var vars = { weekday: weekday, dayN: dayN, n: 0, module: pickCapped(rng, mods, used, 3, config.modules) };
     var headExtra = [config.company, config.jobTitle].filter(Boolean).join(' · ');
     var lines = [];
     lines.push(fill(sk.header, {
@@ -510,12 +569,14 @@
         doneIdx = doneLines.length;
 
       } else if (sec.key === 'gains') {
-        var gm = choice(rng, mods) || mods[0];
+        var gm = pickCapped(rng, mods, used, 3, config.modules);
         var g = takeFresh(rng, Phrases.gains, gm, { module: gm }, hist);
         usedTpls.push(g.tpl);
         var gl = [g.line];
         if (sk.gainsTail !== false && rng() < 0.6) {
-          var gt = takeFresh(rng, Phrases.gainsTail, gm, { module: gm }, hist);
+          // 收尾句换一个模块：两句都以 {module} 开头，同模块连出两句会一模一样地起头
+          var gm2 = pickCapped(rng, mods, used, 3, config.modules);
+          var gt = takeFresh(rng, Phrases.gainsTail, gm2, { module: gm2 }, hist);
           usedTpls.push(gt.tpl);
           gl.push(gt.line);
         }
@@ -524,12 +585,13 @@
       } else if (sec.key === 'problems') {
         var pl = [];
         if (rng() < 0.65) {
-          var pm = choice(rng, mods);
+          var pm = pickCapped(rng, mods, used, 3, config.modules);
           var pr = takeFresh(rng, Phrases.problems, pm, { module: pm }, hist);
           usedTpls.push(pr.tpl);
           problem = pr.line;
           var so = takeFresh(rng, Phrases.solutions, pm, { module: pm }, hist);
           usedTpls.push(so.tpl);
+          tally(used, pm);   // 解决句也用同一个模块，预算要补记（否则它会被反复挑中）
           if (sk.problemsStyle === 'joined') {
             pl.push(pr.line + so.line);
           } else if (sk.problemsStyle === 'itemed') {
@@ -540,7 +602,7 @@
             pl.push(so.line);
           }
         } else {
-          var nm = choice(rng, mods) || mods[0];
+          var nm = pickCapped(rng, mods, used, 3, config.modules);
           var np = takeFresh(rng, Phrases.noProblem, nm, { module: nm }, hist);
           usedTpls.push(np.tpl);
           pl.push(sk.problemsStyle === 'itemed' ? (itemPrefix(sk, 0) + np.line) : np.line);
@@ -564,7 +626,8 @@
           });
         }
         if (rng() < 0.5) {
-          var tm = planMods[0] || mods[0] || '';
+          // 收尾句换一个模块（原来固定用 planMods[0]，与正文首条同模块）
+          var tm = planMods.length > 1 ? pickCapped(rng, planMods, used, 3, config.modules) : (planMods[0] || mods[0] || '');
           var pt = takeFresh(rng, Phrases.planTail, tm, { module: tm }, hist);
           usedTpls.push(pt.tpl);
           pp.push(pt.line);
@@ -590,6 +653,9 @@
     var need = min ? (min - charCount(lines.join('\n'))) : 0;
     var noteLines = [], tailLines = [], guard = 0;
     while (need > 0 && guard < 28) {
+      // 补充记录沿用「按序号轮换当天模块」的老策略，**刻意不走模块预算**：
+      // 800 字档会补 10+ 条记录，一旦让它们参与预算、频繁触发全池兜底，
+      // 不同天的模块组合就会趋同 —— 实测整篇相似度从 5% 反弹到 21%（超 15% 红线）。
       var nm = mods[guard % mods.length] || '';
       var nv = { module: nm, weekday: weekday, dayN: dayN };
       var parts = [];

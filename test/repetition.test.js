@@ -878,6 +878,260 @@ section('M15 岗位模块池');
 })();
 
 /* ============================================================
+ * M16 排版样式选项（config.layout）
+ * 用户诉求：生成出来的版式每天都在变（一会儿「1.」一会儿「①②③」），
+ * 看着不像同一个人写的。所以加了 config.layout，三档语义必须钉死：
+ *   ''           自动轮换 —— 相邻两天必不同（这是相似度最低的档，是默认值）
+ *   'family:num' / 'family:sym' —— 只在家族内的 3 套之间轮换，仍是相邻天不同
+ *   'skN'        完全固定 —— **同一天重复生成也必须还是同一套**，否则「固定」名不副实
+ * 另外要保证三件事：
+ *   ① 非法的 layout 一律降级为自动轮换（导入别人的备份不能把生成器带崩）
+ *   ② 固定档下相邻两天版式相同（这是它相对默认档的已知代价，锁住以防"修回轮换"）
+ *   ③ 换到固定档不会影响正文之外的东西 —— 骨架只决定抬头/编号/条目符号
+ * ============================================================ */
+section('M16 排版样式选项 config.layout');
+(function () {
+  function mkCtx() {
+    var c = {
+      window: {}, console: { log: function () { } },
+      localStorage: {
+        _s: {}, getItem: function (k) { return this._s[k] || null; },
+        setItem: function (k, v) { this._s[k] = v; }, removeItem: function (k) { delete this._s[k]; }
+      }
+    };
+    vm.createContext(c);
+    ['store.js', 'phrases.js', 'generator.js', 'composer.js'].forEach(function (f) {
+      vm.runInContext(fs.readFileSync(path.join(JS, f), 'utf8'), c, { filename: f });
+    });
+    ['Store', 'Phrases', 'Generator', 'Composer'].forEach(function (k) { c[k] = c.window[k]; });
+    if (c.Store.data && c.Store.data.settings) c.Store.data.settings.deviceId = 'layout-test';
+    return c;
+  }
+  /* tpls 里骨架以 '@sk3' 形式记录（'@' 是 generator 的 SKEL_KEY），不是裸 'sk3' */
+  var SK_RE = /^@(sk[1-6])$/;
+  function skOf(r) {
+    var hit = (r && r.tpls ? r.tpls : []).filter(function (t) { return SK_RE.test(t); })[0] || '';
+    return hit.slice(1);
+  }
+
+  /* 跑 days 天，返回每天用的骨架 id 与正文 */
+  function runDays(c, cfg, days) {
+    var G = c.Generator;
+    var start = new Date(2026, 8, 7);
+    var rep = {}, st = {}, out = [];
+    for (var i = 0; i < days; i++) {
+      var ds = fmt(addDays(start, i));
+      var r = G.generateDaily(ds, cfg, rep, st, '');
+      rep[ds] = { date: ds, text: r.text, modules: r.modules, extra: r.extra, problem: r.problem, tpls: r.tpls || [] };
+      r.modules.forEach(function (m) { var s = st[m] || { count: 0 }; s.count++; st[m] = s; });
+      var sk = skOf(r);
+      out.push({ date: ds, sk: sk, text: r.text });
+    }
+    return out;
+  }
+  function baseCfg(layout) {
+    return {
+      jobType: 'newmedia', modules: Phrases.jobTypes.newmedia.modules.slice(0, 4),
+      startDate: '2026-09-07', endDate: '2026-12-31', minWords: 300, dailyLoad: 10,
+      company: '示例科技有限公司', jobTitle: '新媒体运营', layout: layout
+    };
+  }
+  function adjacentSame(rows) {
+    var n = 0;
+    for (var i = 1; i < rows.length; i++) if (rows[i].sk && rows[i].sk === rows[i - 1].sk) n++;
+    return n;
+  }
+
+  /* ---- ① 默认档：相邻两天必不同 ---- */
+  (function () {
+    var rows = runDays(mkCtx(), baseCfg(''), 30);
+    var used = {};
+    rows.forEach(function (r) { used[r.sk] = 1; });
+    var uniq = Object.keys(used).length;
+    var adj = adjacentSame(rows);
+    console.log('  · 自动轮换 30 天：用到 ' + uniq + ' 套骨架，相邻天同款 ' + adj + ' 天');
+    ok(uniq >= 5, '自动轮换会用满 6 套骨架（实测 ' + uniq + ' 套）');
+    ok(adj === 0, '默认档相邻两天版式必不同（实测同款 ' + adj + ' 天）');
+  })();
+
+  /* ---- ② 固定档：同一日期重复生成，仍是同一套 ---- */
+  (function () {
+    ['sk1', 'sk3', 'sk6'].forEach(function (id) {
+      var c = mkCtx();
+      var cfg = baseCfg(id);
+      var G = c.Generator;
+      var ds = '2026-09-19';
+      var a = G.generateDaily(ds, cfg, {}, {}, '');
+      var b = G.generateDaily(ds, cfg, {}, {}, '');
+      var sa = skOf(a), sb = skOf(b);
+      ok(sa === id && sb === id, '固定 ' + id + '：同一天重复生成仍是 ' + id + '（得到 ' + sa + ' / ' + sb + '）');
+    });
+  })();
+
+  /* ---- ③ 固定档：不再相邻天轮换（这是选它的代价，明码锁住） ---- */
+  (function () {
+    var rows = runDays(mkCtx(), baseCfg('sk2'), 20);
+    var uniq = {};
+    rows.forEach(function (r) { uniq[r.sk] = 1; });
+    var adj = adjacentSame(rows);
+    console.log('  · 固定 sk2 20 天：用到 ' + Object.keys(uniq).length + ' 套骨架，相邻天同款 ' + adj + ' 天');
+    ok(Object.keys(uniq).length === 1 && uniq.sk2, '固定档全程只用 1 套骨架');
+    ok(adj === 19, '固定档相邻天全部同款（' + adj + '/19）—— 与用户本意一致');
+  })();
+
+  /* ---- ④ 风格家族：只用家族内的 3 套，且相邻天仍不同 ---- */
+  (function () {
+    var allowed = { num: ['sk1', 'sk2', 'sk6'], sym: ['sk3', 'sk4', 'sk5'] };
+    ['num', 'sym'].forEach(function (fam) {
+      var rows = runDays(mkCtx(), baseCfg('family:' + fam), 24);
+      var bad = rows.filter(function (r) { return allowed[fam].indexOf(r.sk) < 0; });
+      var uniq = {};
+      rows.forEach(function (r) { uniq[r.sk] = 1; });
+      console.log('  · family:' + fam + ' 24 天：用到 ' + Object.keys(uniq).length + ' 套（' +
+        Object.keys(uniq).join('/') + '），越界 ' + bad.length + ' 天');
+      ok(bad.length === 0, 'family:' + fam + ' 不会用到家族外的骨架');
+      ok(Object.keys(uniq).length === 3, 'family:' + fam + ' 会用满家族内 3 套');
+      ok(adjacentSame(rows) === 0, 'family:' + fam + ' 相邻两天仍不重样');
+    });
+  })();
+
+  /* ---- ⑤ 固定档不改动正文内容，只换排版 ---- */
+  (function () {
+    var cfgA = baseCfg('');
+    var rowsA = runDays(mkCtx(), cfgA, 6);
+    var rowsB = runDays(mkCtx(), baseCfg('sk1'), 6);
+    // 去掉抬头行与编号符号后，两档的正文句子数量应处在同一量级（不因排版而缩水）
+    function bodyLen(t) { return t.replace(/[\s]/g, '').length; }
+    var avgA = mean(rowsA.map(function (r) { return bodyLen(r.text); }));
+    var avgB = mean(rowsB.map(function (r) { return bodyLen(r.text); }));
+    var delta = Math.abs(avgA - avgB) / avgA;
+    console.log('  · 正文长度：自动轮换 ' + Math.round(avgA) + ' 字 vs 固定 sk1 ' + Math.round(avgB) + ' 字');
+    ok(delta < 0.25, '换排版不会让正文长度大幅缩水（差异 ' + pct(delta) + ' < 25%）');
+  })();
+
+  /* ---- ⑥ 非法 layout 一律降级为自动轮换（导入他人备份不能把生成器带崩） ---- */
+  (function () {
+    var bads = ['sk9', 'sk0', 'family:xxx', '　', 'AG1', '../../etc/passwd', 'null', 'sk1;alert(1)'];
+    var survived = 0, leaked = [];
+    bads.forEach(function (v) {
+      var rows;
+      try { rows = runDays(mkCtx(), baseCfg(v), 8); } catch (e) { leaked.push(v + '(' + e.message + ')'); return; }
+      var used = {};
+      rows.forEach(function (r) { used[r.sk] = 1; });
+      // 非法值应等价于自动轮换：会出现 2 套以上骨架
+      if (Object.keys(used).length > 1) survived++;
+      else leaked.push(v + '(被当成固定档:' + Object.keys(used).join('') + ')');
+    });
+    console.log('  · 非法 layout ' + bads.length + ' 个：正常降级 ' + survived + ' 个');
+    ok(leaked.length === 0, '非法 layout 不会崩溃、也不会被当成固定档', leaked.join(' , '));
+  })();
+
+  /* ---- ⑦ store 校验白名单：非法值被拦下、合法值原样往返 ---- */
+  (function () {
+    var S = mkCtx().Store;
+    var valid = ['', 'family:num', 'family:sym', 'sk1', 'sk2', 'sk3', 'sk4', 'sk5', 'sk6'];
+    /* 注意 'sk1\n' / ' sk3 ' 不算非法 —— asLayout 先 trim，归一化后是合法值，
+     * 这是有意的（用户从聊天里复制粘贴常带首尾空白），所以它们不进 dirty 列表。 */
+    var dirty = ['sk9', 'sk0', 'family:x', 'javascript:1', ' SK1 ', 'auto', 'AG1', 123, null, {}, [], true];
+    var keptOK = valid.every(function (v) {
+      var d = S._sanitize({ reports: {}, config: { modules: ['a'], layout: v } });
+      return d.data.config.layout === v;
+    });
+    ok(keptOK, '合法 layout（含空串）在 sanitize 后原样保留');
+    var dropped = dirty.every(function (v) {
+      var d = S._sanitize({ reports: {}, config: { modules: ['a'], layout: v } });
+      return d.data.config.layout === '';
+    });
+    ok(dropped, '非法 layout 在 sanitize 时被丢弃为空串（不会写进配置）');
+    // ' SK1 ' 这类带空白/大小写的应被丢弃（大小写敏感，不做模糊纠正）
+    var spaced = S._sanitize({ reports: {}, config: { modules: ['a'], layout: ' sk3 ' } });
+    ok(spaced.data.config.layout === 'sk3', '带首尾空白的合法值会被 trim 后保留（得到 ' +
+      JSON.stringify(spaced.data.config.layout) + '）');
+    var upper = S._sanitize({ reports: {}, config: { modules: ['a'], layout: ' SK3 ' } });
+    ok(upper.data.config.layout === '', '大小写不匹配的档位被丢弃（得到 ' +
+      JSON.stringify(upper.data.config.layout) + '）');
+  })();
+
+  /* ---- ⑧ 聚合稿（周报/月报/实习总结）也吃同一个字段 ---- */
+  (function () {
+    var c = mkCtx();
+    var cfg = baseCfg('sk1');
+    var weeks = [];
+    for (var w = 0; w < 6; w++) {
+      var from = fmt(addDays(new Date(2026, 8, 7), w * 7));
+      var sk = c.Composer.pickAggSkeleton('weekly', from, cfg);
+      weeks.push(sk.id);
+    }
+    var uniq = {};
+    weeks.forEach(function (x) { uniq[x] = 1; });
+    console.log('  · layout=sk1 时 6 期周报骨架：' + weeks.join(' '));
+    ok(Object.keys(uniq).length === 1, '选了固定档后，周报不再逐期换版式（' + Object.keys(uniq).join('/') + '）');
+
+    // 空 layout 时必须恢复「相邻周不同」的原行为
+    var c2 = mkCtx();
+    var cfg2 = baseCfg('');
+    var seq = [];
+    for (var w2 = 0; w2 < 16; w2++) {
+      var f2 = fmt(addDays(new Date(2026, 8, 7), w2 * 7));
+      seq.push(c2.Composer.pickAggSkeleton('weekly', f2, cfg2).id);
+    }
+    var adjSame = 0;
+    for (var i = 1; i < seq.length; i++) if (seq[i] === seq[i - 1]) adjSame++;
+    var u2 = {};
+    seq.forEach(function (x) { u2[x] = 1; });
+    console.log('  · layout=\'\' 时 16 期周报骨架：' + seq.join(' ') + '（用到 ' + Object.keys(u2).length + ' 套）');
+    ok(adjSame === 0, '自动档周报相邻周版式不同（实测同款 ' + adjSame + ' 周）');
+    ok(Object.keys(u2).length === 8, '自动档 16 期会用到全部 8 套聚合骨架（实测 ' + Object.keys(u2).length + ' 套）');
+  })();
+
+  /* ---- ⑩ 聚合稿家族档真的收敛到 3 套（防「白名单 id 写错→家族档静默失效」） ---- */
+  (function () {
+    /* 这里踩过一次坑：白名单写成 'agg1'（骨架真实 id 是 'ag1'），
+     * allow.indexOf 永远不命中 → fam 为空 → 悄悄落回 8 套轮换，
+     * 界面上看着「选了家族档」，实际一点没生效。所以必须断言收敛后的骨架数量。 */
+    /* 两派按「条目符号」划分（数字派 3 套 / 符号派 5 套，数量不等是骨架本身决定的） */
+    var FAM = { num: ['ag1', 'ag4', 'ag6'], sym: ['ag2', 'ag3', 'ag5', 'ag7', 'ag8'] };
+    Object.keys(FAM).forEach(function (fam) {
+      var c = mkCtx();
+      var cfg = baseCfg('family:' + fam);
+      var seq = [], bad = [];
+      for (var w = 0; w < 12; w++) {
+        var from = fmt(addDays(new Date(2026, 8, 7), w * 7));
+        var id = c.Composer.pickAggSkeleton('weekly', from, cfg).id;
+        seq.push(id);
+        if (FAM[fam].indexOf(id) < 0) bad.push(from + ':' + id);
+      }
+      var uniq = {};
+      seq.forEach(function (x) { uniq[x] = 1; });
+      console.log('  · 周报 family:' + fam + ' 12 期：' + seq.join(' ') + '（' + Object.keys(uniq).length + ' 套）');
+      ok(bad.length === 0, '周末 family:' + fam + ' 只用家族内骨架（越界：' + (bad.slice(0, 3).join(',') || '无') + '）');
+      ok(Object.keys(uniq).length === FAM[fam].length,
+        '周报 family:' + fam + ' 收敛到 ' + FAM[fam].length + ' 套（实测 ' + Object.keys(uniq).length +
+        '）—— 若等于 8 说明白名单 id 写错、档位静默失效');
+    });
+
+    // 实习总结也要跟着家族档走，不能仍是 8 套全轮换
+    var cs = mkCtx();
+    var sums = [];
+    for (var k = 0; k < 12; k++) {
+      sums.push(cs.Composer.pickAggSkeleton('monthly', '2026-' + pad2(k + 1) + '-01', baseCfg('family:num')).id);
+    }
+    var su = {};
+    sums.forEach(function (x) { su[x] = 1; });
+    ok(Object.keys(su).length === 3, '月报 family:num 收敛到 3 套（实测 ' + Object.keys(su).length + '）');
+  })();
+
+  /* ---- ⑨ 同配置同日期仍可复现（固定档不能破坏这条不变量） ---- */
+  (function () {
+    ['', 'family:sym', 'sk4'].forEach(function (v) {
+      var a = runDays(mkCtx(), baseCfg(v), 5).map(function (r) { return r.text; }).join('\u0001');
+      var b = runDays(mkCtx(), baseCfg(v), 5).map(function (r) { return r.text; }).join('\u0001');
+      ok(a === b, 'layout=' + JSON.stringify(v) + ' 时同配置同日期仍逐字可复现');
+    });
+  })();
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

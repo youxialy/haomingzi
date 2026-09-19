@@ -432,11 +432,36 @@
     return { tpl: pool[0], line: fill(pool[0], vars) };
   }
 
-  /* 骨架轮换：取「最久未用」的一档，同档内随机（等价于 6 天一轮的轮转） */
-  function pickSkeleton(rng, hist) {
+  /* 骨架轮换：取「最久未用」的一档，同档内随机（等价于 6 天一轮的轮转）。
+   *
+   * config.layout 允许用户放弃轮换、锁定一种排版（用户诉求：每天生成出来的版式
+   * 一会儿「1.」一会儿「①」，看着不像同一个人写的）。三个档位：
+   *   ''           自动轮换（默认）—— 相邻两天必不同，相似度最低
+   *   'family:num' 风格统一·数字编号派（sk1/sk2/sk6）
+   *   'family:sym' 风格统一·符号编号派（sk3/sk4/sk5）
+   *   'sk1'~'sk6'  完全固定某一套
+   *
+   * ⚠️ 关键点：`todaySkeleton` 的排除**只对自动档生效**。固定档如果也排除「今天已用」，
+   * 一旦同一份日报连点两次生成，第二次就会换一套 —— 那就不是「固定」了。
+   * 自动档必须保留这个排除：它是「相邻两天不重样」的实现方式（skelAge 让前一天那套
+   * 变成最年轻的，本来就选不到，排除是为了白天的重复生成也不换脸）。 */
+  var LAYOUT_FAMILY = {
+    num: ['sk1', 'sk2', 'sk6'],
+    sym: ['sk3', 'sk4', 'sk5']
+  };
+  function pickSkeleton(rng, hist, layout) {
     var list = skeletonList();
     if (!list) return fallbackSkeleton();
-    var cand = list.filter(function (s) { return s.id !== hist.todaySkeleton; });
+    var v = typeof layout === 'string' ? layout.trim() : '';
+    if (v === 'family:num' || v === 'family:sym') {
+      var allow = LAYOUT_FAMILY[v.slice(7)] || [];
+      var fam = list.filter(function (s) { return allow.indexOf(s.id) >= 0; });
+      if (fam.length) list = fam;
+    } else if (/^sk[1-6]$/.test(v)) {
+      for (var k = 0; k < list.length; k++) if (list[k].id === v) return list[k];
+    }
+    var pinned = /^(family:|sk[1-6]$)/.test(v);
+    var cand = pinned ? list : list.filter(function (s) { return s.id !== hist.todaySkeleton; });
     if (!cand.length) cand = list;
     var scored = cand.map(function (s) { return { s: s, age: hist.skelAge(s.id) }; });
     var maxAge = Math.max.apply(null, scored.map(function (x) { return x.age; }));
@@ -532,7 +557,7 @@
     var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr));
     // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
     hist.lexWords = (Phrases.jobLex && Phrases.jobLex[config.jobType]) || [];
-    var sk = pickSkeleton(rng, hist);
+    var sk = pickSkeleton(rng, hist, config.layout);
     var usedTpls = [SKEL_KEY + sk.id];
 
     // 开头语（openers 池）多数以 {module} 起头，这里同样走预算：优先挑本篇还没用过的模块

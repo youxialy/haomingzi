@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026091902">
+<link rel="stylesheet" href="css/style.css?v=2026091903">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -278,7 +278,22 @@
       </div>
       <p class="hint">截止提醒会显示在首页顶部：临近截止（2 天内）变警醒色，防止错过提交窗口。</p>
 
-      <h3 class="card-title mt">④ 日报栏目（可改名、可关闭；「今日完成」为核心栏目不可关闭）</h3>
+      <h3 class="card-title mt">⑤ 排版样式（选定后一直沿用，不再每天变）</h3>
+      <p class="hint">决定报告长什么样：抬头怎么写、章节编号是「一、」还是「（一）」、条目符号是「1.」还是「・」。<b>同一周/同一月的周报、月报版式始终一致</b>（换到下一周才会换）。</p>
+      <div class="layout-box" id="layoutBox" role="radiogroup" aria-label="排版样式">
+        <label class="layout-opt"><input type="radio" name="layout" value=""><span><b>自动轮换</b><i>每天换一种排版，重复度最低（推荐给「怕雷同」的同学）</i></span></label>
+        <label class="layout-opt"><input type="radio" name="layout" value="family:num"><span><b>风格统一 · 数字编号</b><i>条目一律用「1.」「1）」「（1）」，只在这 3 种版式里轮换</i></span></label>
+        <label class="layout-opt"><input type="radio" name="layout" value="family:sym"><span><b>风格统一 · 符号编号</b><i>条目一律用「・」「-」「①②③」，只在这 5 种版式里轮换</i></span></label>
+        <label class="layout-opt"><input type="radio" name="layout" value="fixed"><span><b>固定一种排版</b><i>从头到尾只用一个版式，最像同一个人写的</i></span></label>
+      </div>
+      <div class="layout-sub" id="layoutFixedBox" hidden>
+        <label for="layoutFixed">选一种版式
+          <select id="layoutFixed"></select>
+        </label>
+        <p class="hint warn" id="layoutWarn" role="status"></p>
+      </div>
+
+      <h3 class="card-title mt">⑥ 日报栏目（可改名、可关闭；「今日完成」为核心栏目不可关闭）</h3>
       <p class="hint">学校模板不一样就改成一样的：比如只要两栏，就把后两栏的勾去掉。</p>
       <div id="sectionsBox"></div>
 
@@ -352,12 +367,12 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026091902"></script>
-<script defer src="js/phrases.js?v=2026091902"></script>
-<script defer src="js/generator.js?v=2026091902"></script>
-<script defer src="js/composer.js?v=2026091902"></script>
-<script defer src="js/editor.js?v=2026091902"></script>
-<script defer src="js/calendar.js?v=2026091902"></script>
-<script defer src="js/app.js?v=2026091902"></script>
+<script defer src="js/store.js?v=2026091903"></script>
+<script defer src="js/phrases.js?v=2026091903"></script>
+<script defer src="js/generator.js?v=2026091903"></script>
+<script defer src="js/composer.js?v=2026091903"></script>
+<script defer src="js/editor.js?v=2026091903"></script>
+<script defer src="js/calendar.js?v=2026091903"></script>
+<script defer src="js/app.js?v=2026091903"></script>
 </body>
 </html>

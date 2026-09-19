@@ -296,6 +296,46 @@ ctxF.Store.save();
 ok(reports10.length === hadReported, '持续失败时不重复回调');
 
 /* ============================================================
+ * 11. 排版档位（config.layout）备份往返
+ * 背景：config 字段走的是白名单校验，**新增字段不同步白名单 → 导入时被静默丢弃**，
+ * 表现为「换设备后排版选项丢失、又变回自动轮换」。这条就是防它回归。
+ * 另外旧备份码里根本没有这个字段，导入后必须落到默认档（''），不能变成 undefined。
+ * ============================================================ */
+section('11. 排版档位随备份码往返');
+(function () {
+  ['', 'family:num', 'family:sym', 'sk1', 'sk4'].forEach(function (v) {
+    var c = makeCtx();
+    c.Store.data.config = { jobType: 'newmedia', modules: ['图文内容选题策划'], startDate: '2026-09-07', layout: v };
+    c.Store.data.reports['2026-09-19'] = { date: '2026-09-19', text: '【实习日报】\n测试', modules: ['图文内容选题策划'], tpls: ['@sk4'] };
+    var code = c.Store.makeCode();
+    var c2 = makeCtx();
+    c2.Store.importCode(code);
+    var got = c2.Store.data.config && c2.Store.data.config.layout;
+    ok(got === v, 'layout=' + JSON.stringify(v) + ' 经备份码往返后仍是 ' + JSON.stringify(got));
+  });
+
+  // 旧版备份码（没有 layout 字段）导入后必须是空串，不能是 undefined
+  var legacy = makeCtx();
+  legacy.Store.data.config = { jobType: 'newmedia', modules: ['图文内容选题策划'], startDate: '2026-09-07' };
+  legacy.Store.data.reports['2026-09-19'] = { date: '2026-09-19', text: '【实习日报】\n测试', modules: ['图文内容选题策划'] };
+  var legacyCode = legacy.Store.makeCode();
+  var c3 = makeCtx();
+  c3.Store.importCode(legacyCode);
+  var lv = c3.Store.data.config.layout;
+  ok(lv === '', '旧备份码（无 layout 字段）导入后落到默认档空串（得到 ' + JSON.stringify(lv) + '）');
+
+  // 别人发来的备份码里塞了非法档位 → 不能把生成器带崩，也不该写进配置
+  var evil = makeCtx();
+  evil.Store.data.config = { jobType: 'newmedia', modules: ['图文内容选题策划'], startDate: '2026-09-07', layout: 'sk999' };
+  evil.Store.data.reports['2026-09-19'] = { date: '2026-09-19', text: '【实习日报】\n测试', modules: ['图文内容选题策划'] };
+  var evilCode = evil.Store.makeCode();
+  var c4 = makeCtx();
+  c4.Store.importCode(evilCode);
+  ok(c4.Store.data.config.layout === '', '非法 layout 随备份码进来时被拦下列外（得到 ' +
+    JSON.stringify(c4.Store.data.config.layout) + '）');
+})();
+
+/* ============================================================
  * 汇总
  * ============================================================ */
 console.log('\n================================');

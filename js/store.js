@@ -148,6 +148,20 @@
     return out;
   }
 
+  /* 排版档位白名单。取值：
+   *   ''           自动轮换（默认，相邻两天必不同，相似度最低）
+   *   'family:num' 风格统一·数字编号派（sk1/sk2/sk6）
+   *   'family:sym' 风格统一·符号编号派（sk3/sk4/sk5）
+   *   'sk1'~'sk6'  完全固定某一套（相似度最高，设置页会给出风险提示）
+   * ⚠️ 加新档位时必须同步改这里，否则导入备份码时字段会被静默丢弃
+   * （表现为「换设备后排版选项丢失」）。 */
+  var LAYOUT_RE = /^(|family:(num|sym)|sk[1-6])$/;
+  function asLayout(v) {
+    if (typeof v !== 'string') return '';
+    var s = v.trim().slice(0, 20);
+    return LAYOUT_RE.test(s) ? s : '';
+  }
+
   /* ============================================================
    * 导入数据校验
    * 备份码会在同学之间互发（页面上就是这么教的），所以一律按不可信输入处理：
@@ -191,7 +205,8 @@
         minWords: asInt(c.minWords, 0, 5000, 300),
         dailyLoad: asInt(c.dailyLoad, 2, 99, 10),
         company: asStr(c.company, 100),
-        jobTitle: asStr(c.jobTitle, 100)
+        jobTitle: asStr(c.jobTitle, 100),
+        layout: asLayout(c.layout)      // '' = 自动轮换；见 asLayout 的说明
       };
       var wd = c.weeklyDue;
       cfg.weeklyDue = (wd === '' || wd === null || wd === undefined) ? '' : String(asInt(wd, 0, 6, ''));

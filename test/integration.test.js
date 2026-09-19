@@ -75,6 +75,9 @@ function boot(opts) {
     virtualConsole: vc,
     beforeParse: function (win) {
       win.addEventListener('error', function (e) { errors.push(e.error || e.message); });
+      // 预置 localStorage：jsdom 的 localStorage 在 beforeParse 阶段就可用，
+      // 所以 store.js 执行 load() 时会读到这份数据（用于「重开页面后回显」这类断言）
+      if (typeof opts.seed === 'function') opts.seed(win);
       win.matchMedia = function (q) {
         return {
           matches: !!(opts.prefersDark && /prefers-color-scheme:\s*dark/.test(q)),
@@ -412,9 +415,86 @@ async function main() {
   ok(L.win.document.documentElement.getAttribute('data-theme') === 'light', '系统浅色时是浅色');
 
   /* ============================================================
-   * 11. guide.html
+   * 11. 排版样式控件（端到端：点单选 → 保存 → 生成时生效）
+   * 这是 2026-09-19 新增的 UI，静态检查抓不到「id 改名了但 JS 还在找旧 id」
+   * 这类问题，所以必须在真实 DOM 上点一遍。
    * ============================================================ */
-  section('11. guide.html');
+  section('11. 排版样式选项（端到端）');
+  (function () {
+    tabTo(doc, 'settings');
+    var radios = doc.querySelectorAll('#layoutBox input[name=layout]');
+    ok(radios.length === 4, '排版选项有 4 个档位（自动轮换 / 数字派 / 符号派 / 固定）', '实际 ' + radios.length);
+    var byVal = {};
+    [].forEach.call(radios, function (r) { byVal[r.value] = r; });
+    ok(byVal[''] && byVal['family:num'] && byVal['family:sym'] && byVal['fixed'],
+      '四个档位的 value 齐全（含默认空值档）');
+    ok(byVal[''].checked === true, '默认选中「自动轮换」');
+    ok(doc.getElementById('layoutFixedBox').hidden === true, '非固定档时不显示「选哪一套」下拉');
+    ok(doc.getElementById('layoutFixed').options.length === 6, '固定档下拉列出全部 6 套版式',
+      '实际 ' + doc.getElementById('layoutFixed').options.length);
+
+    // 切到固定档 → 下拉出现 + 风险提示出现
+    byVal['fixed'].checked = true;
+    byVal['fixed'].dispatchEvent(new win.Event('change', { bubbles: true }));
+    ok(doc.getElementById('layoutFixedBox').hidden === false, '切到固定档后下拉展开');
+    ok(/固定版式/.test(doc.getElementById('layoutWarn').textContent), '固定档给出风险提示文案');
+
+    doc.getElementById('layoutFixed').value = 'sk3';
+    doc.getElementById('cfgSave').click();
+    ok(win.Store.data.config.layout === 'sk3', '保存后 config.layout = sk3（得到 ' +
+      win.Store.data.config.layout + '）');
+
+    // 切回自动轮换并保存
+    byVal[''].checked = true;
+    byVal[''].dispatchEvent(new win.Event('change', { bubbles: true }));
+    ok(doc.getElementById('layoutFixedBox').hidden === true, '切回自动轮换后下拉收起');
+    doc.getElementById('cfgSave').click();
+    ok(win.Store.data.config.layout === '', '切回自动轮换后 config.layout 为空串（得到 ' +
+      JSON.stringify(win.Store.data.config.layout) + '）');
+
+    // 重新载入设置页时，已保存的档位要回显到控件上。
+    // 注意：tabTo 只切页签、不重跑 loadConfigToWizard（那是初始化时跑一次的），
+    // 所以这里走「保存 → 记下 → 重新 boot 一个页面」的路径来验回显。
+    win.Store.data.config.layout = 'family:sym';
+    win.Store.save();
+
+    // 固定档要能真正影响生成结果：直接走界面上的「生成日报」按钮
+    win.Store.data.config.layout = 'sk5';
+    win.Store.data.config.minWords = 300;
+    win.Store.save();
+    tabTo(doc, 'daily');
+    doc.getElementById('genBtn').click();
+    var day = doc.getElementById('dateInput').value;
+    var rec = win.Store.data.reports[day];
+    var sk = rec && (rec.tpls || []).filter(function (t) { return /^@sk[1-6]$/.test(t); })[0];
+    ok(sk === '@sk5', '固定档真的决定了生成用的版式（' + day + ' 得到 ' + sk + '）');
+
+    // 收尾：还原成默认档，别影响后续小节
+    win.Store.data.config.layout = '';
+    win.Store.save();
+  })();
+
+  /* 回显：把 layout 存进 localStorage，再启动一次页面，设置页控件应选中对应档位 */
+  var reloadLayout = await boot({ seed: function (w) {
+    w.localStorage.setItem('irdp_data_v1', JSON.stringify({
+      config: { jobType: 'newmedia', modules: ['图文内容选题策划'], startDate: '2026-09-07', layout: 'family:sym' },
+      reports: {}, savedAgg: {}, moduleStats: {}, customPhrases: [], todos: [],
+      drafts: { daily: {}, agg: {}, summary: '' },
+      settings: { theme: '', deviceId: 'test-fixed' }
+    }));
+  } });
+  (function () {
+    var rd = reloadLayout.doc;
+    var shown = '';
+    [].forEach.call(rd.querySelectorAll('#layoutBox input[name=layout]'), function (r) { if (r.checked) shown = r.value; });
+    ok(shown === 'family:sym', '重开页面后已保存的档位回显到控件（得到 ' + JSON.stringify(shown) + '）');
+    ok(rd.getElementById('layoutFixedBox').hidden === true, '家族档不展开「固定某一套」下拉');
+  })();
+
+  /* ============================================================
+   * 12. guide.html
+   * ============================================================ */
+  section('12. guide.html');
   var gHtml = fs.readFileSync(path.join(SRC, 'guide.html'), 'utf8');
   ok(gHtml.indexOf('prefers-color-scheme') > 0, 'guide.html 头部有主题判定脚本');
   ok(gHtml.indexOf('name="theme-color"') > 0, 'guide.html 有 theme-color meta（且随主题切换）');

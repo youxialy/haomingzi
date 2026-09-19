@@ -106,24 +106,59 @@
     { id: 'ag8', head: '【{range} 实习{kind}】{batch}{ext}', secStyle: 'cn', item: '- ', joined: true, closer: '以上为本{unit}实习情况小结。' }
   ];
 
+  /* 风格家族 = 按「条目符号」把 8 套聚合骨架分成两派（条目符号是视觉上最抢眼的一处）：
+   *   数字派 3 套：ag1('1. ')、ag4('1）')、ag6('（1）')
+   *   符号派 5 套：ag2('・')、ag3('- ')、ag5('①②③')、ag7('・')、ag8('- ')
+   * 两派数量不等是骨架本身决定的，不做人为凑数 —— 凑数就得改骨架设计，
+   * 反而会把「相邻周不同」的轮转打乱。界面上如实写「3 种」「5 种」。
+   * ⚠️ 白名单里的 id 必须和 AGG_SKELETONS 的 id 逐字一致（'ag1' 不是 'agg1'）。
+   * 写错不会报错，只会让家族档静默失效、悄悄退回 8 套轮换 —— M16 第 ⑩ 组就是防这个。 */
+  var AGG_FAMILY = {
+    num: ['ag1', 'ag4', 'ag6'],
+    sym: ['ag2', 'ag3', 'ag5', 'ag7', 'ag8']
+  };
+  function aggFamilyOf(v) {
+    if (v === 'family:num') return AGG_FAMILY.num;
+    if (v === 'family:sym') return AGG_FAMILY.sym;
+    return null;
+  }
+
   /* 周期序号 -> 骨架。不读任何存储字段：同一周期永远同一种版式，相邻周/月必然不同。
    * 8 套骨架 = 结构周期 8 期（P0 只有 6 套，52 周里「6 期间隔撞同骨架」46 对、
    * 同骨架篇对均值 0.610 vs 异骨架 0.552）；再用配置指纹加一个偏移，
-   * 同一周不同人拿到的版式也不同。 */
+   * 同一周不同人拿到的版式也不同。
+   *
+   * config.layout 非空时改为「锁定一套」：选固定的那一套；选风格家族（数字/符号派）
+   * 时只在家族内轮换（同一周仍固定，8 期一循环变成 3/5 期一循环）。用户诉求是
+   * 「周报/月报不要一期一个样」，所以这里必须跟日报用同一个字段，不能只改日报。 */
   function pickAggSkeleton(type, from, config) {
-    var n;
+    var v = (config && typeof config.layout === 'string') ? config.layout.trim() : '';
+    var allow = aggFamilyOf(v);
+    if (allow) {
+      var fam = AGG_SKELETONS.filter(function (s) { return allow.indexOf(s.id) >= 0; });
+      if (fam.length) return fam[Math.abs(Math.round(aggSeq(type, from, config))) % fam.length];
+    } else if (/^ag\d+$/.test(v)) {
+      for (var q = 0; q < AGG_SKELETONS.length; q++) if (AGG_SKELETONS[q].id === v) return AGG_SKELETONS[q];
+    } else if (/^sk[1-6]$/.test(v)) {
+      /* 日报固定档（'skN'）也顺延到聚合稿：取同名序号的骨架，
+       * 让「我选的是第 3 套」在日报和周月报上是同一套风格。 */
+      var idx = Number(v.slice(2)) - 1;
+      return AGG_SKELETONS[idx % AGG_SKELETONS.length];
+    }
+    var n = aggSeq(type, from, config) + (hashStr('agg#' + aggKey(config)) % AGG_SKELETONS.length);
+    return AGG_SKELETONS[Math.abs(Math.round(n)) % AGG_SKELETONS.length];
+  }
+
+  /* 周期序号：周报取 ISO 周数（拿不到就用 2026-01-01 起的天数折算），月报取「年*12+月」 */
+  function aggSeq(type, from, config) {
     if (type === 'monthly') {
       var m = /^(\d{4})-(\d{2})/.exec(from || '');
-      n = m ? (Number(m[1]) * 12 + Number(m[2])) : 0;
-    } else {
-      var w = weekNumber(config, from);
-      if (w === null) {
-        var d = Date.UTC(2026, 0, 1);
-        n = from ? Math.floor((Store.parse(from).getTime() - d) / 6048e5) : 0;
-      } else n = w;
+      return m ? (Number(m[1]) * 12 + Number(m[2])) : 0;
     }
-    n = Math.abs(Math.round(n)) + (hashStr('agg#' + aggKey(config)) % AGG_SKELETONS.length);
-    return AGG_SKELETONS[n % AGG_SKELETONS.length];
+    var w = weekNumber(config, from);
+    if (w !== null) return w;
+    var d = Date.UTC(2026, 0, 1);
+    return from ? Math.floor((Store.parse(from).getTime() - d) / 6048e5) : 0;
   }
 
   /* ---------- 周报 / 月报句式池 ---------- */
@@ -687,6 +722,25 @@
     '起止时间 {span}　有效记录 {n} 天'
   ];
 
+  /* 实习总结只有一份，本来就不存在「每期换脸」的问题，但用户选了固定档/家族档时
+   * 也应当跟着走，否则总结会和周报月报不是一套风格。没有 layout 时沿用原算法。 */
+  function pickSummarySkeleton(config, firstDate, ck) {
+    var v = (config && typeof config.layout === 'string') ? config.layout.trim() : '';
+    var h = hashStr('sum#' + firstDate + '#' + ck);
+    if (/^ag\d+$/.test(v)) {
+      for (var q = 0; q < AGG_SKELETONS.length; q++) if (AGG_SKELETONS[q].id === v) return AGG_SKELETONS[q];
+    } else if (/^sk[1-6]$/.test(v)) {
+      return AGG_SKELETONS[(Number(v.slice(2)) - 1) % AGG_SKELETONS.length];
+    } else {
+      var allow = aggFamilyOf(v);
+      if (allow) {
+        var fam = AGG_SKELETONS.filter(function (s) { return allow.indexOf(s.id) >= 0; });
+        if (fam.length) return fam[h % fam.length];
+      }
+    }
+    return AGG_SKELETONS[h % AGG_SKELETONS.length];
+  }
+
   function internshipSummary(config, reports) {
     var dates = Object.keys(reports).sort();
     if (!dates.length) return null;
@@ -694,7 +748,7 @@
 
     var ck = aggKey(config);
     var rng = makeRng('sum#' + dates[0] + '#' + dates[dates.length - 1] + '#' + recs.length + '#' + ck);
-    var sk = AGG_SKELETONS[hashStr('sum#' + dates[0] + '#' + ck) % AGG_SKELETONS.length];
+    var sk = pickSummarySkeleton(config, dates[0], ck);
 
     var mc = moduleCounts(recs);
     var top = Object.keys(mc).map(function (k) { return [k, mc[k]]; })

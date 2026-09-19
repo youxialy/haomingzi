@@ -165,6 +165,94 @@
    * ============================================================ */
   var sel = { jobType: null, modules: [], custom: [] };
 
+  /* ---------- 排版样式 ----------
+   * 用户在设置页选的档位存在 config.layout，生成器按它决定用哪套骨架
+   * （'sk1'~'sk6' 见 phrases.js 的 skeletons）：
+   *   ''           自动轮换（默认）
+   *   'family:num' 数字编号派（sk1/sk2/sk6）
+   *   'family:sym' 符号编号派（sk3/sk4/sk5）
+   *   'sk3' 等      完全固定
+   * 界面上把「完全固定 + 具体哪套」拆成「固定一种排版」单选 + 一个下拉，
+   * 所以对外有两个控件要联动，控件值到存储值之间做一次双向映射。 */
+  var LAYOUT_FAMILY_IDS = {
+    num: ['sk1', 'sk2', 'sk6'],
+    sym: ['sk3', 'sk4', 'sk5']
+  };
+  /* 每套版式在 UI 里的说明。数字/符号两派分开列，避免用户选到「同一派里的另一种」时
+   * 以为没生效（两派内部的差异比跨派小得多）。 */
+  var LAYOUT_DESC = {
+    sk1: '一、 / 1. —— 章节用「一、」，条目用「1.」，最常见的一种',
+    sk2: '（一）/ 1）—— 章节用「（一）」，条目用「1）」，带问题栏编号',
+    sk3: '一、 / ・ —— 章节用「一、」，条目用「・」，计划并成一行',
+    sk4: '【一】/ - —— 章节用「【一】」，条目用「-」，结尾带一句总结',
+    sk5: '一、 / ①②③ —— 章节用「一、」，条目用「①②③」',
+    sk6: '一）/（1）—— 章节用「一）」，条目用「（1）」，带问题栏编号'
+  };
+
+  /* 存储值 -> 界面（档位, 固定下拉值） */
+  function layoutToUi(v) {
+    if (v === 'family:num' || v === 'family:sym') return { mode: v, fixed: '' };
+    if (/^sk[1-6]$/.test(v)) return { mode: 'fixed', fixed: v };
+    return { mode: '', fixed: '' };
+  }
+  /* 界面 -> 存储值。固定档没选具体版式时先当作自动轮换，避免存进一个非法值。 */
+  function uiToLayout(mode, fixed) {
+    if (mode === 'fixed') return /^sk[1-6]$/.test(fixed) ? fixed : '';
+    if (mode === 'family:num' || mode === 'family:sym') return mode;
+    return '';
+  }
+
+  function renderLayoutFixed() {
+    var selEl = $('layoutFixed');
+    var keep = selEl.value;
+    selEl.innerHTML = '';
+    var list = (Phrases.skeletons || []);
+    var groups = [
+      { label: '数字编号', ids: LAYOUT_FAMILY_IDS.num },
+      { label: '符号编号', ids: LAYOUT_FAMILY_IDS.sym }
+    ];
+    groups.forEach(function (g) {
+      var avail = list.filter(function (s) { return g.ids.indexOf(s.id) >= 0; });
+      if (!avail.length) return;
+      var og = document.createElement('optgroup');
+      og.label = g.label;
+      avail.forEach(function (s) {
+        var op = document.createElement('option');
+        op.value = s.id;
+        op.textContent = LAYOUT_DESC[s.id] || s.id;
+        og.appendChild(op);
+      });
+      selEl.appendChild(og);
+    });
+    if (keep) selEl.value = keep;
+    if (!selEl.value && selEl.options.length) selEl.value = selEl.options[0].value;
+  }
+
+  function syncLayoutUi() {
+    var mode = '';
+    document.querySelectorAll('input[name=layout]').forEach(function (r) { if (r.checked) mode = r.value; });
+    var box = $('layoutFixedBox');
+    box.hidden = (mode !== 'fixed');
+    renderLayoutFixed();
+    $('layoutWarn').textContent =
+      '⚠️ 固定版式会让每天的排版完全一样。若被问到「是不是模板」，' +
+      '可改用「自动轮换」，或点「换一版」重新生成。';
+  }
+
+  function loadLayoutToWizard(v) {
+    var ui = layoutToUi(v || '');
+    document.querySelectorAll('input[name=layout]').forEach(function (r) { r.checked = (r.value === ui.mode); });
+    renderLayoutFixed();
+    if (ui.fixed) $('layoutFixed').value = ui.fixed;
+    syncLayoutUi();
+  }
+
+  function collectLayout() {
+    var mode = '';
+    document.querySelectorAll('input[name=layout]').forEach(function (r) { if (r.checked) mode = r.value; });
+    return uiToLayout(mode, $('layoutFixed').value);
+  }
+
   function renderJobGrid() {
     var grid = $('jobGrid');
     grid.innerHTML = '';
@@ -366,6 +454,7 @@
     $('cfgJobTitle').value = cfg.jobTitle || '';
     $('cfgWeeklyDue').value = cfg.weeklyDue || '';
     $('cfgMonthlyDue').value = cfg.monthlyDue || '';
+    loadLayoutToWizard(cfg.layout);
     renderSectionsEditor(cfg.sections && cfg.sections.length ? cfg.sections : Generator.defaultSections());
     renderJobGrid();
     renderModuleBox();
@@ -385,6 +474,7 @@
       jobTitle: $('cfgJobTitle').value.trim(),
       weeklyDue: $('cfgWeeklyDue').value,
       monthlyDue: $('cfgMonthlyDue').value,
+      layout: collectLayout(),
       sections: collectSections()
     };
     Store.save();
@@ -664,6 +754,12 @@
       toast('已恢复为该岗位的默认勾选');
     });
     $('cfgSave').addEventListener('click', saveConfig);
+
+    // 排版样式：切到「固定一种排版」才展开下拉 + 风险提示
+    document.querySelectorAll('input[name=layout]').forEach(function (r) {
+      r.addEventListener('change', syncLayoutUi);
+    });
+    syncLayoutUi();
 
     // 素材库
     renderPhraseCats();

@@ -799,6 +799,40 @@ section('M14 补充记录的开场雷同（同篇内）');
 })();
 
 /* ============================================================
+ * M15 岗位模块池（2026-09-19 扩池后的硬约束）
+ * 28 个岗位的模块池从 6~7 个扩到 8~9 个（共补 56 条）。
+ * 为什么必须 ≥8：每天出 4 条工作项，池 ≥8 时任意两天的 4 元子集可以完全不重叠
+ * （|A∩B| ≥ |A|+|B|-|N| = 4+4-8 = 0）—— 实测跨天重叠 2/1 → 0。
+ * 模块名还要满足：岗位内不重名、长度 3~12（太长塞不进句式、太短会跟模板的动词撞车）、
+ * 不含花括号（否则会干扰 {module} 占位符替换）。
+ * ============================================================ */
+section('M15 岗位模块池');
+(function () {
+  var keys = Object.keys(Phrases.jobTypes);
+  var small = [], dupIn = [], badLen = [], braces = [];
+  var lens = [];
+  keys.forEach(function (k) {
+    var ms = Phrases.jobTypes[k].modules || [];
+    lens.push(ms.length);
+    if (ms.length < 8) small.push(k + '(' + ms.length + ')');
+    var seen = {};
+    ms.forEach(function (m) {
+      if (seen[m]) dupIn.push(k + ':' + m);
+      seen[m] = 1;
+      if (m.length < 3 || m.length > 12) badLen.push(k + ':' + m + '(' + m.length + ')');
+      if (/[{}]/.test(m)) braces.push(k + ':' + m);
+    });
+  });
+  var totalMods = keys.reduce(function (a, k) { return a + Phrases.jobTypes[k].modules.length; }, 0);
+  console.log('  · ' + keys.length + ' 个岗位 / ' + totalMods + ' 条模块；池最小 ' +
+    Math.min.apply(null, lens) + ' 个、最大 ' + Math.max.apply(null, lens) + ' 个');
+  ok(small.length === 0, '每个岗位的模块池 ≥8 个（不足：' + (small.join(',') || '无') + '）');
+  ok(dupIn.length === 0, '岗位内模块名无重复', dupIn.slice(0, 3).join(' , '));
+  ok(badLen.length === 0, '模块名长度 3~12 字', badLen.slice(0, 3).join(' , '));
+  ok(braces.length === 0, '模块名不含花括号（不会干扰 {module} 替换）', braces.slice(0, 3).join(' , '));
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

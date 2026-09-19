@@ -149,6 +149,59 @@ async function main() {
   ok(!!win.Store.data.config, '配置已保存');
   ok(win.Store.data.config.modules.length === 4, '配置里存下 4 个模块');
 
+  /* --- 模块的动态增 / 改 / 删 / 恢复默认（2026-09-19 新增能力）---
+   * 只改编辑态，不点保存，所以不会污染上面刚存好的配置。 */
+  var chipNames = function () {
+    return [].map.call(doc.querySelectorAll('#moduleBox .module-chip .m-name'), function (n) { return n.textContent; });
+  };
+  var findChip = function (name) {
+    return [].filter.call(doc.querySelectorAll('#moduleBox .module-chip'), function (c) {
+      return c.querySelector('.m-name').textContent === name;
+    })[0];
+  };
+  var pressKey = function (el, key) {
+    el.dispatchEvent(new el.ownerDocument.defaultView.KeyboardEvent('keydown', { key: key, bubbles: true }));
+  };
+
+  doc.getElementById('customModule').value = '自定义测试模块';
+  doc.getElementById('moduleAdd').click();
+  ok(chipNames().indexOf('自定义测试模块') >= 0, '新增自定义模块出现在列表里');
+  var newChip = findChip('自定义测试模块');
+  ok(!!newChip && newChip.getAttribute('aria-checked') === 'true', '新增的自定义模块默认勾选');
+  ok(!!newChip.querySelector('.m-del'), '自定义模块带移除按钮');
+  ok(!!newChip.querySelector('.m-edit'), '每个模块都带重命名按钮');
+
+  newChip.querySelector('.m-edit').click();
+  var rn = doc.querySelector('#moduleBox .m-rename');
+  ok(!!rn, '点 ✎ 出现重命名输入框');
+  if (rn) {
+    rn.value = '改名后的模块';
+    pressKey(rn, 'Enter');
+    ok(chipNames().indexOf('改名后的模块') >= 0, '回车后重命名生效');
+    ok(chipNames().indexOf('自定义测试模块') < 0, '旧名字已消失');
+  }
+
+  var renamed = findChip('改名后的模块') || newChip;
+  renamed.querySelector('.m-del').click();
+  ok(chipNames().indexOf('改名后的模块') < 0, '点 ✕ 能移除自定义模块');
+
+  // 重命名一个预设模块 → 应变成「自定义 + 原预设不再勾选」，不能凭空多出一个勾选项
+  var presetChip = findChip(cards[0] && win.Phrases.jobTypes[win.Store.data.config.jobType].modules[0]);
+  if (presetChip) {
+    presetChip.querySelector('.m-edit').click();
+    var rn2 = doc.querySelector('#moduleBox .m-rename');
+    if (rn2) {
+      rn2.value = '预设改名后的模块';
+      pressKey(rn2, 'Enter');
+      ok(chipNames().indexOf('预设改名后的模块') >= 0, '预设模块也能重命名');
+      ok(!!findChip('预设改名后的模块').querySelector('.m-del'), '重命名后的预设变成了自定义模块');
+    }
+  }
+
+  doc.getElementById('moduleReset').click();
+  ok(doc.querySelectorAll('#moduleBox .module-chip[aria-checked="true"]').length === 4, '恢复默认后回到勾选 4 个');
+  ok(doc.querySelectorAll('#moduleBox .m-del').length === 0, '恢复默认后自定义模块已清空');
+
   tabTo(doc, 'daily');
   var dateInput = doc.getElementById('dateInput');
   dateInput.value = '2026-09-07';

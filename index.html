@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026091807">
+<link rel="stylesheet" href="css/style.css?v=2026091901">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -235,7 +235,9 @@
       <div class="add-row">
         <input type="text" id="customModule" aria-label="自定义工作模块" placeholder="添加自定义模块，如：仓库盘点">
         <button class="btn sm" id="moduleAdd">添加</button>
+        <button class="btn sm" id="moduleReset">恢复默认</button>
       </div>
+      <p class="hint">点击模块可勾选/取消；点 ✎ 或按 F2 可重命名；自定义模块点 ✕ 或按 Delete 移除。勾几个就会写几条工作项（上限 4 条）。</p>
       <h3 class="card-title mt">③ 实习信息（对照学习通实习计划里的起止时间）</h3>
       <div class="form-grid">
         <label>实习开始日期 <input type="date" id="cfgStart"></label>
@@ -350,12 +352,12 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026091807"></script>
-<script defer src="js/phrases.js?v=2026091807"></script>
-<script defer src="js/generator.js?v=2026091807"></script>
-<script defer src="js/composer.js?v=2026091807"></script>
-<script defer src="js/editor.js?v=2026091807"></script>
-<script defer src="js/calendar.js?v=2026091807"></script>
-<script defer src="js/app.js?v=2026091807"></script>
+<script defer src="js/store.js?v=2026091901"></script>
+<script defer src="js/phrases.js?v=2026091901"></script>
+<script defer src="js/generator.js?v=2026091901"></script>
+<script defer src="js/composer.js?v=2026091901"></script>
+<script defer src="js/editor.js?v=2026091901"></script>
+<script defer src="js/calendar.js?v=2026091901"></script>
+<script defer src="js/app.js?v=2026091901"></script>
 </body>
 </html>

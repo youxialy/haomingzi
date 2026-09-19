@@ -177,14 +177,57 @@
       card.setAttribute('aria-pressed', sel.jobType === key ? 'true' : 'false');
       card.textContent = jt.name;
       card.addEventListener('click', function () {
+        var changed = sel.jobType !== key;
         sel.jobType = key;
-        // 预置模块默认勾选前 4 个
+        // 预置模块默认勾选前 4 个（每天正好 4 条工作项）
         sel.modules = jt.modules.slice(0, 4);
+        // 换岗位时清掉上一个岗位的自定义模块 —— 否则「幼儿生活照料」会跟着
+        // 出现在会计岗位的配置里，保存后还会进日报，很难排查。
+        if (changed) sel.custom = [];
         renderJobGrid();
         renderModuleBox();
       });
       grid.appendChild(card);
     });
+  }
+
+  /* 模块重命名（就地变成输入框）。
+   * 改「预设模块」= 新名字变成自定义模块 + 原预设名不再勾选 —— 刻意**不引入新的存储字段**，
+   * 这样不必动 store 的 sanitize 与备份格式（那会牵动 62 项备份断言）。
+   * 鼠标点 ✎、键盘按 F2 进入；回车/失焦确认，Esc 取消。 */
+  function startRename(oldName, chip, nameEl) {
+    if (!nameEl || !nameEl.parentNode) return;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'm-rename';
+    input.value = oldName;
+    input.maxLength = 30;
+    input.size = Math.max(6, oldName.length + 2);
+    input.setAttribute('aria-label', '重命名模块');
+    chip.replaceChild(input, nameEl);
+    input.focus();
+    input.select();
+    var done = false;
+    function commit(save) {
+      if (done) return;
+      done = true;
+      var v = input.value.trim();
+      if (!save || !v || v === oldName) { renderModuleBox(); return; }
+      var wasOn = sel.modules.indexOf(oldName) >= 0;
+      sel.modules = sel.modules.filter(function (x) { return x !== oldName; });
+      sel.custom = sel.custom.filter(function (x) { return x !== oldName; });
+      if (sel.custom.indexOf(v) < 0) sel.custom.push(v);
+      if (wasOn && sel.modules.indexOf(v) < 0) sel.modules.push(v);
+      renderModuleBox();
+      toast('已重命名为「' + v + '」，记得点「保存配置」');
+    }
+    input.addEventListener('keydown', function (e) {
+      e.stopPropagation();                    // 别让 chip 的 Space/Enter 抢走按键
+      if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+    input.addEventListener('blur', function () { commit(true); });
   }
 
   function renderModuleBox() {
@@ -206,14 +249,20 @@
       box.appendChild(warn);
       return;
     }
-    var preset = jt.modules;
-    preset.concat(sel.custom).forEach(function (m) {
+    // 预设 + 自定义 + 「配置里已勾选但两边都没有」的兜底（正常不会出现，列出来免得被悄悄丢掉）
+    var all = jt.modules.slice();
+    sel.custom.forEach(function (m) { if (all.indexOf(m) < 0) all.push(m); });
+    sel.modules.forEach(function (m) { if (all.indexOf(m) < 0) all.push(m); });
+
+    all.forEach(function (m) {
+      var isCustom = sel.custom.indexOf(m) >= 0;
       var chip = document.createElement('span');
       var on = sel.modules.indexOf(m) >= 0;
       chip.className = 'module-chip' + (on ? ' active' : '');
       chip.setAttribute('role', 'checkbox');
       chip.setAttribute('aria-checked', on ? 'true' : 'false');
       chip.tabIndex = 0;
+      chip.title = '点击勾选/取消；F2 重命名' + (isCustom ? '；Delete 移除' : '');
 
       // 模块名可能来自用户输入或导入的备份码，一律用 textContent 写入，
       // 绝不拼 innerHTML —— 否则一条恶意备份码就能执行脚本（本工具还在教用户互发备份码）。
@@ -222,21 +271,31 @@
       mName.textContent = m;
       chip.appendChild(mName);
 
-      if (sel.custom.indexOf(m) >= 0) {
+      // ✎ / ✕ 只是鼠标快捷方式（键盘走 F2 / Delete），对读屏隐藏以免重复播报
+      var ed = document.createElement('span');
+      ed.className = 'm-edit';
+      ed.setAttribute('aria-hidden', 'true');
+      ed.textContent = '✎';
+      chip.appendChild(ed);
+
+      if (isCustom) {
         var del = document.createElement('span');
         del.className = 'm-del';
-        del.title = '移除';
+        del.setAttribute('aria-hidden', 'true');
         del.textContent = '✕';
         chip.appendChild(del);
       }
 
+      function remove() {
+        sel.custom = sel.custom.filter(function (x) { return x !== m; });
+        sel.modules = sel.modules.filter(function (x) { return x !== m; });
+        renderModuleBox();
+      }
       function activate(e) {
-        if (e.target && e.target.className === 'm-del') {
-          sel.custom = sel.custom.filter(function (x) { return x !== m; });
-          sel.modules = sel.modules.filter(function (x) { return x !== m; });
-          renderModuleBox();
-          return;
-        }
+        var cls = e && e.target ? e.target.className : '';
+        if (cls === 'm-del') { remove(); return; }
+        if (cls === 'm-edit') { startRename(m, chip, mName); return; }
+        if (e && e.target && e.target.tagName === 'INPUT') return;   // 重命名框里的点击不切换勾选
         var i = sel.modules.indexOf(m);
         if (i >= 0) sel.modules.splice(i, 1);
         else sel.modules.push(m);
@@ -245,6 +304,8 @@
       chip.addEventListener('click', activate);
       chip.addEventListener('keydown', function (e) {
         if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); activate({ target: chip }); }
+        else if (e.key === 'F2') { e.preventDefault(); startRename(m, chip, mName); }
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && isCustom) { e.preventDefault(); remove(); }
       });
       box.appendChild(chip);
     });
@@ -592,6 +653,15 @@
     });
     $('customModule').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') $('moduleAdd').click();
+    });
+    // 一键回到该岗位的默认勾选（前 4 个），并清掉自定义模块 —— 改错了不用一个个点回来
+    $('moduleReset').addEventListener('click', function () {
+      if (!sel.jobType) { toast('请先选择岗位类型'); return; }
+      var jt = Phrases.jobTypes[sel.jobType];
+      sel.modules = jt ? jt.modules.slice(0, 4) : [];
+      sel.custom = [];
+      renderModuleBox();
+      toast('已恢复为该岗位的默认勾选');
     });
     $('cfgSave').addEventListener('click', saveConfig);
 

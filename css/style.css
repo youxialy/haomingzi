@@ -239,6 +239,13 @@ textarea { resize: vertical; line-height: 1.8; }
 }
 .module-chip .m-del { color: var(--text-soft); font-size: 13px; }
 .module-chip .m-del:hover { color: var(--danger); }
+.module-chip .m-edit { color: var(--text-soft); font-size: 12px; }
+.module-chip .m-edit:hover { color: var(--primary); }
+.module-chip .m-del, .module-chip .m-edit { cursor: pointer; margin-left: 3px; line-height: 1; }
+.module-chip .m-rename {
+  font: inherit; color: inherit; background: transparent; outline: none;
+  border: none; border-bottom: 1px solid currentColor; padding: 0 1px; min-width: 4em;
+}
 .module-chip.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .form-grid label { font-size: 13px; color: var(--text-soft); display: flex; flex-direction: column; gap: 6px; }

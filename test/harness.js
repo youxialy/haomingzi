@@ -27,6 +27,9 @@ vm.createContext(ctx);
 ['Store', 'Phrases', 'Generator', 'Composer'].forEach(function (k) {
   ctx[k] = ctx.window[k];
 });
+/* deviceId 由 store.js 加载时随机生成 → 每次运行种子都不同，生成类断言会偶发抖动。
+ * 测试里固定它（生产逻辑不变），保证结果可复现。 */
+if (ctx.Store.data && ctx.Store.data.settings) ctx.Store.data.settings.deviceId = 'test-fixed';
 
 var Store = ctx.window.Store, Generator = ctx.window.Generator, Composer = ctx.window.Composer;
 

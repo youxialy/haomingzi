@@ -38,6 +38,10 @@ vm.createContext(ctx);
 ctx.Store = ctx.window.Store;
 // generator.js 里引用的是裸 Store / Phrases（浏览器里由 window 提供），vm 里要显式挂上
 ['Store', 'Phrases', 'Generator', 'Composer'].forEach(function (k) { ctx[k] = ctx.window[k]; });
+/* deviceId 是 store.js 加载时用 Math.random 生成的 —— 每次运行种子都不同，
+ * 生成类断言会随机抖动（实测 M8「周报不得逐字照搬日报问题句」约 25% 概率误报）。
+ * 生产逻辑保持不变，测试里显式固定它，保证可复现。 */
+if (ctx.Store.data && ctx.Store.data.settings) ctx.Store.data.settings.deviceId = 'test-fixed';
 var Phrases = ctx.window.Phrases, Generator = ctx.window.Generator, Composer = ctx.window.Composer;
 
 /* ---------------- 工具 ---------------- */
@@ -649,8 +653,10 @@ section('M12 每天工作项条数与同篇模块重复');
     if (peak > worstPeak) { worstPeak = peak; worstPeakJob = job; }
     if (rate > worstRate) { worstRate = rate; worstRateJob = job; }
   });
-  ok(worstPeak <= 4, '单篇同模块名最多出现 4 次（实测峰值 ' + worstPeak + ' @ ' + worstPeakJob + '；修复前 7）');
-  ok(worstRate < 0.5, '某模块 ≥4 次的篇数占比 ' + pct(worstRate) + ' < 50%（@ ' + worstRateJob + '；修复前 62.5%）');
+  /* 2026-09-19 收紧：修掉「问题句按 cap=3 挑模块、解决句再补记一次 → 实际占掉 4 次」之后，
+   * 300 字档峰值 4 → 3、≥4 次的篇数 31~42% → 0%（6 个岗位各 120 天实测）。 */
+  ok(worstPeak <= 3, '单篇同模块名最多出现 3 次（实测峰值 ' + worstPeak + ' @ ' + worstPeakJob + '；修复前 7）');
+  ok(worstRate < 0.05, '某模块 ≥4 次的篇数占比 ' + pct(worstRate) + ' < 5%（@ ' + worstRateJob + '；修复前 62.5%）');
 
   /* 用户勾几个模块就写几条 —— 旧版「池子不足 5 个就砍到 2 条」会让只勾 3 个模块的人
    * 每天只拿到 2 条，日报读起来很空。 */
@@ -796,6 +802,45 @@ section('M14 补充记录的开场雷同（同篇内）');
   ok(shapeDupDays === 0, '同篇补充记录开场形态重复 0 天（改前 64.4%）');
   ok(modDupDays / (days || 1) < 0.25,
     '同篇补充记录模块名重复 ' + pct(modDupDays / (days || 1)) + ' < 25%（改前 97.8%）');
+
+  /* ③ 计划尾句不能和同一区块的计划条目撞模块。
+   * 用户真实日报里最后两句连着都是「短视频拍摄剪辑」—— 原因是收尾句只从 planMods（2 个）
+   * 里挑，挑哪个都必然撞。改成先从当天全池找没用过的模块，找不到才退回。 */
+  var ALL_MODS = [];
+  Object.keys(Phrases.jobTypes).forEach(function (k) {
+    Phrases.jobTypes[k].modules.forEach(function (m) { if (ALL_MODS.indexOf(m) < 0) ALL_MODS.push(m); });
+  });
+  ALL_MODS.sort(function (a, b) { return b.length - a.length; });
+  function blockOf(text, kw) {
+    var out = [], on = false;
+    text.split('\n').forEach(function (l) {
+      var t = l.trim();
+      if (!t) return;
+      if (isSectionHead(t)) { on = new RegExp(kw).test(t); return; }
+      if (on) out.push(t);
+    });
+    return out;
+  }
+  function modIn(line) {
+    var body = line.replace(ITEM, '').trim();
+    for (var i = 0; i < ALL_MODS.length; i++) { if (body.indexOf(ALL_MODS[i]) >= 0) return ALL_MODS[i]; }
+    return '';
+  }
+  var c14b = buildCorpus('newmedia', 60, 300);
+  var tailDup = 0, tailDays = 0;
+  c14b.order.forEach(function (d) {
+    var blk = blockOf(c14b.reports[d].text, '计划|安排');
+    if (blk.length < 2) return;
+    tailDays++;
+    var last = modIn(blk[blk.length - 1]);
+    if (!last) return;
+    for (var i = 0; i < blk.length - 1; i++) {
+      if (modIn(blk[i]) === last) { tailDup++; break; }
+    }
+  });
+  console.log('  · 「明日计划」尾句与同区块条目撞模块：' + tailDup + ' / ' + tailDays + ' 天');
+  ok(tailDup / (tailDays || 1) < 0.15,
+    '计划尾句极少与计划条目撞模块（' + pct(tailDup / (tailDays || 1)) + ' < 15%）');
 })();
 
 /* ============================================================

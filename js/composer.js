@@ -380,17 +380,33 @@
    * 优先用 Phrases.problemKinds（与 Phrases.problems 逐条对齐）做类型化归纳，
    * 这样周报里不会出现与日报逐字相同的长句；匹配不到（旧数据 / 自定义句式）时
    * 退回「一是…；二是…」的文字归纳。 */
+  /* 模板 → 正则：{module} 留一个占位符（反查时替换成具体模块名），
+   * {lex} 直接当通配 —— 生成时填的是哪个语域词，反查这边无从得知。
+   * 之前只用 tf(pool[j], {module}) 做整串相等比较，含 {lex} 的模板永远匹配不上，
+   * 于是整段退回「逐字照搬日报原句」（实测约 3% 的周报命中，且随 deviceId 抖动）。 */
+  function tplToPat(tpl) {
+    return '^' + tpl.split(/(\{module\}|\{lex\})/).map(function (seg) {
+      if (seg === '{module}') return '\u0001';
+      if (seg === '{lex}') return '[^，。；、]{2,8}';
+      return seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('') + '$';
+  }
+  function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
   function problemSummaryOf(recs, problems, unit) {
     var pool = (typeof Phrases !== 'undefined' && Phrases.problems) ? Phrases.problems : null;
     var kinds = [], samples = [];
     if (pool && Phrases.problemKinds && Phrases.problemKinds.length === pool.length) {
       var seen = {};
+      var pats = pool.map(tplToPat);
       recs.forEach(function (r) {
         if (!r.problem) return;
         var mods = r.modules || [];
         for (var i = 0; i < mods.length; i++) {
+          if (r.problem.indexOf(mods[i]) < 0) continue;      // 便宜的字符串预筛，省掉大部分正则
           for (var j = 0; j < pool.length; j++) {
-            if (tf(pool[j], { module: mods[i] }) !== r.problem) continue;
+            var re = new RegExp(pats[j].replace(/\u0001/g, escRe(mods[i])));
+            if (!re.test(r.problem)) continue;
             var k = Phrases.problemKinds[j];
             if (!seen[k]) { seen[k] = 1; kinds.push(k); samples.push(mods[i]); }
             return;

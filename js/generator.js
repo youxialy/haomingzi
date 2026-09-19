@@ -609,7 +609,12 @@
       } else if (sec.key === 'problems') {
         var pl = [];
         if (rng() < 0.65) {
-          var pm = pickCapped(rng, mods, used, 3, config.modules);
+          /* cap 传 2（不是 3）：问题和解决两句**共用同一个模块**，下面还会补记一次。
+           * 这里若按 cap=3 挑，补记之后实际就占掉 4 次 —— 用户真实日报里
+           * 「图文内容选题策划」出现 4 次（今日完成 1 + 问题 1 + 解决 1 + 计划 1）
+           * 正是这条路径造成的：按 3 挑中时它已被用过 2 次，补记后变成 4。
+           * 传 2 相当于「给解决句预留一个额度」，选中的一定满足 used ≤ 1。 */
+          var pm = pickCapped(rng, mods, used, 2, config.modules);
           var pr = takeFresh(rng, Phrases.problems, pm, { module: pm }, hist);
           usedTpls.push(pr.tpl);
           problem = pr.line;
@@ -650,8 +655,15 @@
           });
         }
         if (rng() < 0.5) {
-          // 收尾句换一个模块（原来固定用 planMods[0]，与正文首条同模块）
-          var tm = planMods.length > 1 ? pickCapped(rng, planMods, used, 3, config.modules) : (planMods[0] || mods[0] || '');
+          /* 收尾句优先挑「计划里还没出现过的模块」。原来从 planMods（只有 2 个）里挑，
+           * 挑哪个都必然与上面某条计划撞模块 —— 用户日报里计划 2) 和尾句连着两句都是
+           * 「短视频拍摄剪辑明天……」，读起来像同一条写了两次。
+           * 改成先到当天全池找没用过的模块，找不到才退回 planMods。 */
+          var tailCand = config.modules.filter(function (m) {
+            return planMods.indexOf(m) < 0 && (used[m] || 0) < 3;
+          });
+          var tm = tailCand.length ? pickCapped(rng, tailCand, used, 3) : '';
+          if (!tm) tm = planMods[0] || mods[0] || '';
           var pt = takeFresh(rng, Phrases.planTail, tm, { module: tm }, hist);
           usedTpls.push(pt.tpl);
           pp.push(pt.line);

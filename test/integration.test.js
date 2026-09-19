@@ -118,6 +118,9 @@ async function main() {
   section('1. 页面启动（7 个脚本全部执行、绑定全部命中）');
   var A = await boot();
   var win = A.win, doc = A.doc;
+  /* deviceId 由 store.js 加载时随机生成 → 每次运行种子都不同，生成类断言会偶发抖动。
+   * 测试里固定它（生产逻辑不变），保证结果可复现。 */
+  if (win.Store.data && win.Store.data.settings) win.Store.data.settings.deviceId = 'test-fixed';
   ok(A.errors.length === 0, '启动无未捕获异常', A.errors.map(function (e) { return (e && e.message) || e; }).join(' | '));
   ['App', 'Store', 'Editor', 'Calendar', 'Phrases', 'Generator', 'Composer'].forEach(function (k) {
     ok(win[k] && (typeof win[k] === 'object' || typeof win[k] === 'function'), '全局 ' + k + ' 已就绪');

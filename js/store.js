@@ -11,6 +11,7 @@
   var KEY = 'irdp_data_v1';
   var CODE_PREFIX = 'IR2:';    // 当前备份码：LZ 压缩 + base64
   var OLD_PREFIX = 'IR1:';     // 旧版备份码：base64(UTF-8 JSON)，仍可导入
+  var SCHEMA_VERSION = 1;      // 数据 schema 版本：改存储结构时 +1，并在 migrate() 里加对应升级分支
 
   var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,6 +26,7 @@
 
   var DEFAULTS = function () {
     return {
+      schemaVersion: SCHEMA_VERSION,  // 见 migrate()：改结构时 +1 并加升级分支
       config: null,        // { jobType, modules[], startDate, endDate, minWords, company, jobTitle }
       reports: {},         // dateStr -> { date, text, modules[], extra, problem, submitted, updatedAt }
       savedAgg: {},        // id -> { type, from, to, text, createdAt }  周报/月报留档
@@ -80,16 +82,37 @@
     }
   }
 
-  function load() {
-    try {
-      var raw = (typeof localStorage !== 'undefined') && localStorage.getItem(KEY);
-      data = raw ? JSON.parse(raw) : DEFAULTS();
-    } catch (e) {
-      data = DEFAULTS();
+  /* 把任意版本的存量数据升级到当前 schema。
+   * 历史上靠「缺啥补啥」侥幸兼容（deviceId、layout 都是这么加上去的），
+   * 现在固化成显式的 migrate()：将来改存储结构（如 config → plans 数组）
+   * 就在这里按 schemaVersion 分支升级，而不是在 load() 里继续堆判断。 */
+  function migrate(raw) {
+    if (!isPlainObject(raw)) raw = DEFAULTS();
+    var v = asInt(raw.schemaVersion, 0, SCHEMA_VERSION, 0);   // 无字段 = v0（历史存量）
+    if (v < 1) {
+      // v0 → v1：补齐顶层字段；config/settings 缺了或不是对象就回退到默认
+      var d = DEFAULTS();
+      Object.keys(d).forEach(function (k) { if (raw[k] === undefined) raw[k] = d[k]; });
+      if (!isPlainObject(raw.config)) raw.config = d.config;
+      if (!isPlainObject(raw.settings)) raw.settings = d.settings;
+      v = 1;
     }
-    // 补齐可能缺失的字段（版本兼容）
-    var d = DEFAULTS();
-    Object.keys(d).forEach(function (k) { if (data[k] === undefined) data[k] = d[k]; });
+    /* 将来（示例）：
+     * if (v < 2) { 把 config 升级成 plans 数组并设 activePlanId；v = 2; }
+     */
+    raw.schemaVersion = SCHEMA_VERSION;
+    return raw;
+  }
+
+  function load() {
+    var raw;
+    try {
+      var s = (typeof localStorage !== 'undefined') && localStorage.getItem(KEY);
+      raw = s ? JSON.parse(s) : DEFAULTS();
+    } catch (e) {
+      raw = DEFAULTS();
+    }
+    data = migrate(raw);
     ensureDeviceId();
     return data;
   }
@@ -564,6 +587,7 @@
     set onSaveError(fn) { onSaveError = fn; },
     // 供测试直接调用
     _sanitize: sanitize,
+    _migrate: migrate,
     _lz: { compress: lzCompress, decompress: lzDecompress }
   };
 

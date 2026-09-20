@@ -28,6 +28,10 @@
   function defaultSections() {
     return JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
   }
+  /* 栏目标题的「key → 默认标题」映射，唯一来源。
+   * 兜底分支也从这里取，避免在别处再抄一份同样的标题（改一处漏一处会让自定义标题失效）。 */
+  var DEFAULT_TITLES = {};
+  DEFAULT_SECTIONS.forEach(function (s) { DEFAULT_TITLES[s.key] = s.title; });
 
   /* ---------- 随机数（种子化，可复现） ---------- */
   function hashStr(s) {
@@ -596,8 +600,7 @@
 
     sections.forEach(function (sec) {
       if (!sec.on && sec.key !== 'done') return;
-      var fallbackTitle = { done: '今日完成', gains: '收获与学习', problems: '遇到的问题与解决', plans: '明日计划' }[sec.key];
-      var title = (sec.title || '').trim() || fallbackTitle;
+      var title = (sec.title || '').trim() || DEFAULT_TITLES[sec.key];
 
       if (sec.key === 'done') {
         // 活动型模块用不带数量的句式，避免「参加晨会…15项」这类别扭表达

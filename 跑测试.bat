@@ -26,7 +26,7 @@ echo [4/5] 真机冒烟（用 jsdom 把首页整个跑起来）...
 node test\integration.test.js
 if errorlevel 1 set FAILED=1
 echo.
-echo [5/5] 内容防重复回归（M1~M11 阈值固化）...
+echo [5/5] 内容防重复回归（M1~M16 阈值固化）...
 node test\repetition.test.js
 if errorlevel 1 set FAILED=1
 echo.
@@ -38,4 +38,8 @@ if "%FAILED%"=="1" (
   echo [通过] 全部测试通过，可以放心双击「更新网站.bat」发布。
 )
 echo ============================================
+if /I "%~1"=="auto" (
+  exit /b %FAILED%
+)
 pause
+exit /b %FAILED%

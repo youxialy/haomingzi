@@ -336,6 +336,40 @@ section('11. 排版档位随备份码往返');
 })();
 
 /* ============================================================
+ * 12. 存储迁移 migrate()：老数据升级后字段不丢、版本号打上
+ * 背景：历史上靠「缺啥补啥」侥幸兼容，现在固化成 migrate()。
+ * 这条锁的是：任何版本的老数据升级到当前 schema 后，原有字段一个不少，
+ * 且被正式打上 schemaVersion —— 将来改结构（如多实习计划）就靠它安全升级。
+ * ============================================================ */
+section('12. 存储迁移 migrate()');
+(function () {
+  var c = makeCtx();
+  var S = c.Store;
+
+  // 老数据：没有 schemaVersion、缺了 moduleStats/todos 等顶层字段
+  var legacy = {
+    config: { jobType: 'newmedia', modules: ['图文内容选题策划'], startDate: '2026-09-07' },
+    reports: { '2026-09-08': { date: '2026-09-08', text: '【实习日报】\n测试正文', modules: ['图文内容选题策划'] } }
+  };
+  var m = S._migrate(JSON.parse(JSON.stringify(legacy)));
+
+  ok(m.schemaVersion === 1, '老数据升级后打上 schemaVersion=1（得到 ' + m.schemaVersion + '）');
+  ok(m.reports && m.reports['2026-09-08'] && m.reports['2026-09-08'].text === '【实习日报】\n测试正文', 'reports 原有内容不丢');
+  ok(m.config && m.config.jobType === 'newmedia' && m.config.modules.length === 1, 'config 原有字段不丢');
+  ok(m.moduleStats && typeof m.moduleStats === 'object', '缺 moduleStats 时被补成空对象');
+  ok(m.todos && Array.isArray(m.todos), '缺 todos 时被补成空数组');
+  ok(m.settings && typeof m.settings === 'object', '缺 settings 时被补成对象');
+
+  // 已是最新版本的直接原样返回（不该丢字段、不该重复升级）
+  var m2 = S._migrate(JSON.parse(JSON.stringify(m)));
+  ok(m2.schemaVersion === 1 && m2.reports['2026-09-08'].text === '【实习日报】\n测试正文', '已是最新版本时原样返回、字段仍完整');
+
+  // 非法输入（非对象）不抛错，回退为全新默认
+  var m3 = S._migrate(null);
+  ok(m3 && m3.schemaVersion === 1 && m3.reports && typeof m3.reports === 'object', '非对象输入不抛错、回退为全新默认数据');
+})();
+
+/* ============================================================
  * 汇总
  * ============================================================ */
 console.log('\n================================');

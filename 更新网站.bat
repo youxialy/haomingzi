@@ -5,6 +5,16 @@ echo ============================================
 echo   实习日报一点通 — 一键发布更新
 echo ============================================
 echo.
+echo 正在运行全部测试（发布前门禁）...
+call 跑测试.bat auto
+if errorlevel 1 (
+  echo.
+  echo [中止] 有测试未通过，已停止发布。请先修复，再重新双击本文件。
+  pause
+  exit /b 1
+)
+echo 测试全部通过，继续发布。
+echo.
 echo 正在收集改动...
 git add -A
 git commit -m "网站更新 %date% %time%" >nul 2>&1

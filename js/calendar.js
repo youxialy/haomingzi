@@ -113,28 +113,47 @@
       .map(function (cb) { return cb.value; })
       .sort();
     if (!sel.length) { App.toast('先勾选要补写的日期'); return; }
-    var n = 0;
-    // 按日期升序逐篇生成：前一篇落库后，后一篇的防雷同和模块轮换能衔接上
-    sel.forEach(function (ds) {
-      var r = Generator.generateDaily(ds, cfg, Store.data.reports, Store.data.moduleStats, '');
-      if (!r) return;
-      Store.data.reports[ds] = {
-        date: ds, text: r.text, modules: r.modules,
-        extra: '', problem: r.problem, tpls: r.tpls || [], statCounted: true
-      };
-      r.modules.forEach(function (m) {
-        var s = Store.data.moduleStats[m] || { count: 0, lastDate: '' };
-        s.count++; s.lastDate = ds;
-        Store.data.moduleStats[m] = s;
-      });
-      n++;
-    });
-    Store.save();
-    $('backfillPanel').hidden = true;
-    render();
-    Editor.renderDaily();
-    App.renderDue();
-    App.toast('已补齐 ' + n + ' 篇日报，记得逐篇过目后再提交');
+
+    var runBtn = $('backfillRun');
+    var stat = $('backfillStat');
+    runBtn.disabled = true;          // 防止补写过程中重复点击
+    var n = 0, i = 0;
+    var CHUNK = 10;                  // 每片生成 10 篇后让出主线程，避免一次 22 篇把界面卡死
+
+    function step() {
+      var end = Math.min(i + CHUNK, sel.length);
+      for (; i < end; i++) {
+        var ds = sel[i];
+        // 按日期升序逐篇生成：前一篇落库后，后一篇的防雷同和模块轮换能衔接上
+        var r = Generator.generateDaily(ds, cfg, Store.data.reports, Store.data.moduleStats, '');
+        if (!r) continue;
+        Store.data.reports[ds] = {
+          date: ds, text: r.text, modules: r.modules,
+          extra: '', problem: r.problem, tpls: r.tpls || [], statCounted: true
+        };
+        r.modules.forEach(function (m) {
+          var s = Store.data.moduleStats[m] || { count: 0, lastDate: '' };
+          s.count++; s.lastDate = ds;
+          Store.data.moduleStats[m] = s;
+        });
+        n++;
+      }
+      if (i < sel.length) {
+        stat.textContent = '正在生成 ' + i + ' / ' + sel.length + ' 篇…';
+        (window.requestAnimationFrame || function (f) { setTimeout(f, 0); })(step);
+      } else {
+        Store.save();
+        runBtn.disabled = false;
+        $('backfillPanel').hidden = true;
+        render();
+        Editor.renderDaily();
+        App.renderDue();
+        App.toast('已补齐 ' + n + ' 篇日报，记得逐篇过目后再提交');
+      }
+    }
+
+    stat.textContent = '正在生成 0 / ' + sel.length + ' 篇…';
+    step();
   }
 
   /* ---------- 待办 ---------- */

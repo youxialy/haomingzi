@@ -102,7 +102,7 @@ intern-report/
 │   ├── draft.test.js       # 草稿暂存测试（无依赖）
 │   ├── backup.test.js      # 备份码 / 导入校验测试（无依赖）
 │   ├── integration.test.js # 真机冒烟：用 jsdom 把首页整个跑起来（需 jsdom）
-│   └── repetition.test.js  # 内容防重复回归（M1~M11，51 项，无依赖）
+│   └── repetition.test.js  # 内容防重复回归（M1~M18，121 项，无依赖）
 ├── tools/
 │   └── bump-version.js     # 一键升级缓存版本号（改 10 处 ?v= / VERSION）
 ├── package.json / eslint.config.js / .editorconfig
@@ -116,11 +116,11 @@ intern-report/
 双击 **`跑测试.bat`** 一键跑全部五套；或 `npm test`；或分别执行：
 
 ```bash
-node test/harness.js          # 28 项断言  生成引擎
+node test/harness.js          # 无断言，只打印样例  生成引擎
 node test/draft.test.js       # 23 项断言  草稿暂存
-node test/backup.test.js      # 62 项断言  备份码 / 导入校验
+node test/backup.test.js      # 77 项断言  备份码 / 导入校验
 node test/integration.test.js # 107 项断言  真机冒烟（自动查找 jsdom，找不到才跳过）
-node test/repetition.test.js  # 51 项断言  内容防重复回归（M1~M11）
+node test/repetition.test.js  # 121 项断言  内容防重复回归（M1~M18）
 ```
 
 合计 **328 项断言**（harness.js 只打印样例，不计入）。前四套零依赖，直接在 Node 里跑；`integration.test.js` 需要 jsdom
@@ -130,14 +130,14 @@ node test/repetition.test.js  # 51 项断言  内容防重复回归（M1~M11）
 并模拟「配置岗位 → 生成 → 保存 → 切日期 → 导出 → 导入 → 换主题 → 开弹窗」整条链路，
 能抓住「静态检查抓不到、只有运行才暴露」的问题（绑错元素、回调抛错、导入后渲染炸掉）。
 
-**改了生成相关内容必跑 `repetition.test.js`**：它把内容防重复的 11 项指标（M1~M11）阈值固化，
+**改了生成相关内容必跑 `repetition.test.js`**：它把内容防重复的 18 项指标（M1~M18）阈值固化，
 指标回退会直接红掉（例如把防重窗口改小、把句式池删条、把版式骨架删掉、把配置指纹从随机种子里去掉）。
 
 ## 开发
 
 ```bash
 npm i          # 安装开发依赖（eslint / jsdom），运行时仍是零依赖
-npm test       # 跑全部 5 套 246 项断言
+npm test       # 跑全部 5 套 328 项断言
 npm run lint   # ESLint 静态检查
 node tools/bump-version.js 2026091901   # 一键升级缓存版本号（10 处）
 ```

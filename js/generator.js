@@ -260,6 +260,15 @@
   var BAD_PAIR = /(进行|完成|做好|落实|开展|参与|安排|承接|推进|执行|处理|整理|记录|登记|维护|参加|学习|复盘)(参加|学习|复盘|处理|整理|登记|记录|维护)/;
   var LEFT_VERB = /^(进行|完成|做好|落实|开展|参与|安排|承接|推进|执行|处理|整理|记录|登记|维护|参加|学习|复盘)$/;
   var HEAD_VERB = /^(参加|学习|复盘|处理|整理|登记|记录|维护)$/;
+  /* 动宾堆叠的「宽判定」：模板紧贴 {module} 左侧以**及物动词结尾**，
+   * 而模块本身以**动词开头** → 拼出来就是「动词 + 动词」：
+   *   「继续做」+「参加晨会」= 做参加   「跟着师傅做」+「处理退换货」= 做处理
+   * 为什么必须用「结尾匹配」而不是像 LEFT_VERB 那样比对整 2 字：
+   * LEFT_VERB 取占位符左边**恰好 2 个字**，「明天继续做{module}」取到的是「续做」，
+   * 不在动词表里 → 漏判。真正冲突的是那个单字动词「做」。
+   * （实测：全库有 21 条这样的模板，旧 badJoin 漏判率 100%） */
+  var VT_TAIL = /(做|完|完成|处理|跟进|开展|进行|推进|执行|承接|落实|参与|整理|记录|登记|维护|核对|撰写|制作|统计|检查|排查|更新|录入|对接|协调|接听|参加|学习|复盘)$/;
+  var VT_HEAD = /^(参加|学习|复盘|处理|整理|接听|核对|跟进|开展|推进|执行|撰写|制作|统计|检查|排查|更新|录入|对接|协调|承接|落实)/;
   var SKEL_KEY = '@';     // 骨架在 tpls 里以 '@sk3' 形式记录，无需改存储格式
 
   /**
@@ -272,11 +281,17 @@
     if (BAD_PAIR.test(tpl)) return true;          // 模板自身就写错了
     if (!mod) return false;
     var mh = mod.slice(0, 2);
-    if (tpl.slice(0, 2) === mh) return true;      // 「处理{module}」×「处理售后…」→ 处理处理
+    // 「处理{module}」×「处理售后…」→ 处理处理。
+    // 必须限定「相同的这两个字本身是动词」——否则模板以名词开头时会误伤：
+    // 「数据和记录做了二次核对」× 模块「数据统计与复盘分析」都从「数据」开头，
+    // 那条句式本身没病，只是首二字碰巧相同。
+    if (tpl.slice(0, 2) === mh && VT_HEAD.test(mh)) return true;
     var i = tpl.indexOf('{module}');
     if (i < 0) return false;
     var left = tpl.slice(0, i).slice(-2);         // 紧挨占位符左边的两个字
     if (LEFT_VERB.test(left) && (HEAD_VERB.test(mh) || left === mh)) return true;
+    // 动宾堆叠：及物动词结尾（含单字「做」）× 动词开头的模块
+    if (VT_TAIL.test(tpl.slice(0, i)) && VT_HEAD.test(mod)) return true;
     return false;
   }
 
@@ -432,6 +447,11 @@
     // 候选全被判为病句/近邻时，退回到「最久未用且不成病句」的第一条
     for (var j = 0; j < order.length; j++) {
       if (!badJoin(order[j], mod)) return { tpl: order[j], line: fill(order[j], vars) };
+    }
+    // order（池子前 45%）里全被判成病句时，再扫整个池找一条干净的。
+    // 少了这一步，后面的 pool[0] 兜底会把病句又吐回来。badJoin 不消耗随机数，可复现性不受影响。
+    for (var k = 0; k < pool.length; k++) {
+      if (!badJoin(pool[k], mod)) return { tpl: pool[k], line: fill(pool[k], vars) };
     }
     return { tpl: pool[0], line: fill(pool[0], vars) };
   }

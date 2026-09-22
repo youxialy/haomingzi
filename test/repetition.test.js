@@ -315,7 +315,10 @@ section('M6 同栏目整段重复（同一栏目、整段逐字相同）');
 section('M7 模板病句（「按时进行参加晨会」这类通用动词 + 模块首词撞车）');
 (function () {
   var pools = ['done', 'doneActivity', 'gains', 'gainsTail', 'problems', 'solutions',
-    'noProblem', 'plans', 'planTail', 'fillers', 'openers', 'openersMon', 'openersFri'];
+    'noProblem', 'plans', 'planTail', 'fillers', 'openers', 'openersMon', 'openersFri',
+    /* 补漏：这三个池以前不在巡检范围内，「补充记录」的句式一直没被这条断言覆盖。
+     * 补上后立刻查出一条旧规则的误报（见 badJoin 里对「首二字相同」的动词限定）。 */
+    'noteLead', 'noteAct', 'noteEnd'];
   var allMods = [];
   Object.keys(Phrases.jobTypes).forEach(function (j) {
     allMods = allMods.concat(Phrases.jobTypes[j].modules);
@@ -1129,6 +1132,119 @@ section('M16 排版样式选项 config.layout');
       ok(a === b, 'layout=' + JSON.stringify(v) + ' 时同配置同日期仍逐字可复现');
     });
   })();
+})();
+
+/* ============================================================
+ * M17 病句探测器的「灵敏度」锁（M7 的补充）
+ *
+ * M7 断言「badJoin 拒绝的组合数 = 0」—— 意思是池子干净到不需要过滤。
+ * 这条断言有个致命盲区：**badJoin 一旦变瞎，M7 反而通过得更轻松**，
+ * 因为它只保证「没有误报」，不保证「真病句能被抓住」。
+ * 实测：旧版 badJoin 对全库 21 条「及物动词 + 动词开头模块」的模板
+ * 漏判率 100%（「明天继续做」+「参加晨会」= 做参加），而 M7 当时是全绿的。
+ *
+ * 所以这条锁三件事：
+ *   ① 灵敏度：已知的接缝病句必须被抓住（防 badJoin 再变瞎）
+ *   ② 特异性：正常搭配不许被误杀（防越修越激进）
+ *   ③ 端到端：实际生成的多岗位正文里不得出现接缝病句
+ * ============================================================ */
+section('M17 病句探测器灵敏度（接缝病句必须被抓住）');
+(function () {
+  /* 独立写一份「接缝」判定：只看「模板尾部 × 模块开头」这个交界，不做整行扫描。
+   * ⚠️ 绝不能对填充后的整行跑动词对 —— 模块名自身就可能含两个动词
+   * （「客户信息整理录入」「工位5S整理维护」），整行扫描会把这类正常句式全误杀。 */
+  var VT = '做|完|完成|处理|跟进|开展|进行|推进|执行|承接|落实|参与|整理|记录|登记|维护|核对|撰写|制作|统计|检查|排查|更新|录入|对接|协调|接听|参加|学习|复盘';
+  var TAIL = new RegExp('(' + VT + ')$');
+  var HEAD = new RegExp('^(' + VT + ')');
+  function junctionClash(tpl, mod) {
+    var i = String(tpl).indexOf('{module}');
+    if (i < 0) return false;
+    return TAIL.test(String(tpl).slice(0, i)) && HEAD.test(mod);
+  }
+
+  /* ---- ① 灵敏度：这批以前 100% 漏判，现在必须全部被抓住 ---- */
+  var wasMissed = [
+    ['明天继续做{module}，把{lex}方面还没弄清的补上。', '参加晨会与业务通报'],
+    ['跟着师傅做{module}，把不熟的部分多看了两遍。', '参加晨会与业务通报'],
+    ['做{module}时试着按标准步骤走，结果比凭感觉做得更稳。', '学习产品知识与话术'],
+    ['上午集中做{module}，完成{n}项，下午接着处理剩余部分。', '处理售后退换货'],
+    ['继续跟进{module}的后续事项，确保今天留下的尾巴清零。', '跟进异常物流订单'],
+    ['明天先核对{module}的前置资料，避免做到一半再回头找。', '核对考勤数据'],
+    ['在同事指导下做{module}，做完请他过了一遍。', '参加科室业务学习'],
+    ['跟着走完{module}的整个过程，逐渐摸清了各环节的前后衔接关系。', '参加晨会与业务通报']
+  ];
+  var invalid = wasMissed.filter(function (x) { return !junctionClash(x[0], x[1]); });
+  ok(invalid.length === 0, '上列 ' + wasMissed.length + ' 组样本本身确实是接缝病句',
+    invalid.map(function (x) { return x[0]; }).join(' | '));
+  var notCaught = wasMissed.filter(function (x) {
+    return junctionClash(x[0], x[1]) && !Generator.badJoin(x[0], x[1]);
+  });
+  ok(notCaught.length === 0,
+    '接缝病句全部被 badJoin 抓住（' + wasMissed.length + ' 组，旧版漏判 100%）',
+    notCaught.map(function (x) { return x[0]; }).join(' | '));
+
+  /* ---- ② 特异性：正常搭配不许被误杀 ---- */
+  var fine = [
+    ['{module}明天继续按流程走。', '参加晨会与业务通报'],
+    ['明天在{module}上放慢一点，把规范要求逐条对上。', '参加晨会与业务通报'],
+    ['把{module}排进明天的优先级前列，避免被临时事务挤占。', '参加晨会与业务通报'],
+    ['明天围绕{module}做一次小复盘，把问题点记下来。', '参加晨会与业务通报'],
+    ['明天先{module}，趁上午精力充沛把难点处理掉。', '参加晨会与业务通报'],
+    ['明天先做{module}。', '客户资料归档'],
+    ['明天把{module}做完，再去协助同事的临时事务。', '客户资料归档'],
+    ['数据和记录做了二次核对，确认前后能对得上。', '数据统计与复盘分析']
+  ];
+  var falseAlarm = fine.filter(function (x) { return Generator.badJoin(x[0], x[1]); });
+  ok(falseAlarm.length === 0, '正常搭配没有被误杀（' + fine.length + ' 组）',
+    falseAlarm.map(function (x) { return x[0]; }).join(' | '));
+
+  /* ---- ③ 端到端：多岗位多天，正文里不得出现接缝病句 ---- */
+  var modsAll = [];
+  Object.keys(Phrases.jobTypes).forEach(function (k) {
+    (Phrases.jobTypes[k].modules || []).forEach(function (m) {
+      if (modsAll.indexOf(m) < 0) modsAll.push(m);
+    });
+  });
+  /* 长模块优先，避免短名先命中把长名盖掉 */
+  modsAll.sort(function (a, b) { return b.length - a.length; });
+  var headMods = modsAll.filter(function (m) { return HEAD.test(m); });
+
+  function lineHits(line) {
+    var out = [];
+    for (var k = 0; k < headMods.length; k++) {
+      var mod = headMods[k];
+      var p = line.indexOf(mod);
+      if (p <= 0) continue;                                  // 模块在行首 → 左侧为空，不可能堆叠
+      if (TAIL.test(line.slice(0, p))) {
+        out.push(line.slice(Math.max(0, p - 6), p) + '×' + mod);
+      }
+    }
+    return out;
+  }
+
+  var jobs = Object.keys(Phrases.jobTypes);
+  var hits = [], gen = 0;
+  jobs.forEach(function (jk) {
+    var cfg = {
+      jobType: jk, company: '示例', jobTitle: '实习',
+      modules: Phrases.jobTypes[jk].modules.slice(), custom: [],
+      sections: [{ key: 'done', title: '今日完成', on: true }, { key: 'gains', title: '收获与学习', on: true },
+      { key: 'problems', title: '遇到的问题与解决', on: true }, { key: 'plans', title: '明日计划', on: true }],
+      words: 300, dailyLoad: 10, startDate: '2026-09-01', layout: ''
+    };
+    var rep = {}, st = {};
+    ['2026-09-01', '2026-09-04', '2026-09-08'].forEach(function (ds) {
+      var r = Generator.generateDaily(ds, cfg, rep, st, '');
+      if (!r) return;
+      gen++;
+      rep[ds] = { date: ds, text: r.text, tpls: r.tpls };
+      r.text.split('\n').forEach(function (ln) {
+        lineHits(ln).forEach(function (h) { hits.push('[' + jk + '] ' + h); });
+      });
+    });
+  });
+  console.log('  · 端到端：' + jobs.length + ' 岗位 × 3 天，生成 ' + gen + ' 篇，命中接缝病句 ' + hits.length + ' 处');
+  ok(hits.length === 0, '实际生成的正文里没有接缝病句', hits.slice(0, 4).join('  |  '));
 })();
 
 /* ============================================================

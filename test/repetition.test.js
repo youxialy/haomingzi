@@ -1329,19 +1329,28 @@ section('M18 明日计划的事实锚点（套话治理）');
     (Phrases[k] || []).forEach(function (t) {
       var src = norm(t).split(/(\{\w+\})/)
         .map(function (p) { return /^\{\w+\}$/.test(p) ? '.+?' : esc(p); }).join('');
-      TPLS.push({ t: t, re: new RegExp('^' + src + '$') });
+      TPLS.push({ t: t, re: new RegExp('^' + src + '$'), pool: k });
     });
   });
   function matchTpl(line) {
     var t = norm(line);
-    for (var i = 0; i < TPLS.length; i++) if (TPLS[i].re.test(t)) return TPLS[i].t;
+    for (var i = 0; i < TPLS.length; i++) if (TPLS[i].re.test(t)) return TPLS[i];
     return null;
   }
+  /* 各锚点组的池容量：M5 只按整池算循环周期，分组之后可能错配（见下面 ⑥） */
+  var groupCap = {};
+  PLAN_POOLS.forEach(function (k) {
+    (Phrases[k] || []).forEach(function (t) {
+      var g = k + '/' + kindOfTpl(t);
+      groupCap[g] = (groupCap[g] || 0) + 1;
+    });
+  });
   var ITEM_RE = /^(?:[一二三四五六七八]、|（[一二三四五六七八\d]+）|\([一二三四五六七八\d]+\)|【[一二三四五六七八\d]+】|\d+[.、)）]|[①-⑩]|・|[-*]\s*)\s*/;
   var CLOSER_RE = /^(以上|综上|总之)/;
 
   var tot = 0, plain = 0, unknown = 0, badFact = [], residue = [], kindDup = 0, dupNonPlain = 0;
   var twoPlain = 0, days = 0, crossBad = 0, crossChk = 0, gen = 0;
+  var groupUse = {}, claimBad = [];
   var jobs = Object.keys(Phrases.jobTypes);
 
   jobs.forEach(function (jk) {
@@ -1388,13 +1397,31 @@ section('M18 明日计划的事实锚点（套话治理）');
           var t = part.trim();
           if (!t) return;
           tot++;
-          var tpl = matchTpl(t);
-          var k = tpl ? kindOfTpl(tpl) : 'unknown';
-          if (!tpl) { unknown++; residue.push(ds + ' 未匹配模板 「' + t + '」'); return; }
+          var hit = matchTpl(t);
+          if (!hit) { unknown++; residue.push(ds + ' 未匹配模板 「' + t + '」'); return; }
+          var tpl = hit.t;
+          var k = kindOfTpl(tpl);
+          groupUse[hit.pool + '/' + k] = (groupUse[hit.pool + '/' + k] || 0) + 1;
           kinds.push(k);
           if (k === 'plain') { plain++; plains++; }
 
           var mentioned = mods.filter(function (m) { return t.indexOf(m) >= 0; });
+          /* ⑤ 独立判据：**不看 planKind**，只看句子字面声明了哪个时点。
+           * planKind 一旦把「今天…」误判成 yday，用同一套规则做的校验会把错误"复制"
+           * 过去而不是发现它（实测就这样漏掉 3 条模板）。这里换成与生成侧无关的判据。 */
+          if (/今天|今日/.test(t)) {
+            mentioned.forEach(function (m) {
+              if (r.modules.indexOf(m) < 0) claimBad.push(ds + ' 「' + t + '」← ' + m + ' 字面说「今天」但今天没做过');
+            });
+          }
+          if (/昨天/.test(t)) {
+            var yd = prevOf[ds][prevOf[ds].length - 1];
+            mentioned.forEach(function (m) {
+              if (!yd || (rep[yd].modules || []).indexOf(m) < 0) {
+                claimBad.push(ds + ' 「' + t + '」← ' + m + ' 字面说「昨天」但昨天没做过');
+              }
+            });
+          }
           if (k === 'left' || k === 'n' || k === 'today') {
             mentioned.forEach(function (m) {
               if (r.modules.indexOf(m) < 0) badFact.push(ds + ' [' + k + '] 「' + t + '」← ' + m + ' 今天没做过');
@@ -1462,6 +1489,22 @@ section('M18 明日计划的事实锚点（套话治理）');
   ok(crossBad === 0 && crossChk > 0,
     '跨栏目数字一致：计划句的「今天 N 项」与「今日完成」相同模块一致（校验 ' + crossChk + ' 处）',
     '不一致 ' + crossBad + ' 处');
+  ok(claimBad.length === 0,
+    '独立判据：句子字面说「今天/昨天」时该模块当天确实做过（不依赖 planKind）',
+    claimBad.slice(0, 3).join(' | '));
+  /* ⑥ 每个锚点组的子周期 ≥ 20 天（M5 的口径）。
+   * ⚠️ M5 只按整池算循环周期，分组之后可能错配：实测 plans/yday 组 9 条却承担 18%
+   * 的计划句 → 子周期 20.1 天、模板复用间隔中位 19 天（低于 M2 的 20 天门槛，被整池掩盖）。 */
+  var minCycle = Infinity, worstG = '';
+  Object.keys(groupUse).forEach(function (g) {
+    var cap = groupCap[g] || 0;
+    if (!cap) return;
+    var perDay = groupUse[g] / (days || 1);
+    var cyc = perDay ? cap / perDay : Infinity;
+    if (cyc < minCycle) { minCycle = cyc; worstG = g + '(' + cap + '条)'; }
+  });
+  ok(minCycle >= 20, '每个锚点组的子周期 ' + minCycle.toFixed(1) + ' 天 ≥ 20 天（最短 '
+    + worstG + '；M5 只算整池，会掩盖分组错配）');
   console.log('  · 锚点分布：今天数字 ' + (tot - plain - unknown - 0) + ' 句中，无锚点 ' + plain
     + ' 句（' + pct(plain / (tot || 1)) + '），未匹配模板 ' + unknown + ' 句');
 })();

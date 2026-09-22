@@ -584,6 +584,115 @@
     var sk = pickSkeleton(rng, hist, config.layout);
     var usedTpls = [SKEL_KEY + sk.id];
 
+    /* ---------- 明日计划的「事实锚点」（修 2） ----------
+     * 用户反馈「明日计划太套话、一看就是模板」。诊断后发现根因**不是骨架重复**
+     * （旧池 70 条 70 种结构，骨架重复率 0%），而是**信息量为零** ——
+     * 91% 的句子在说「明天我会继续认真做这个模块」，与今天发生了什么无关。
+     * 修法：让计划句挂靠**真实事实**。事实分两类，可用性不同：
+     *   ① 今天类（{left} 今天还剩几项 / {n} 今天的量 / 今天卡在哪一步）
+     *      **只在「该模块今天确实做过」时才成立**。「今日完成」栏目只列今天的 4 个模块，
+     *      否则同一篇里就会自相矛盾（今日完成没有 X，明日计划却说今天 X 还剩 2 项）。
+     *      实测：计划模块只有 52% 属于今天做过的模块 —— 所以光有这一类不够。
+     *   ② 历史类（{ago} 距上次做几天 / {last} 上次是星期几）
+     *      对任何模块都成立，而且它正好回答了「明天为什么挑这个模块」。
+     * 两类合起来覆盖几乎全部计划句；都不成立才退回「动作具体但无锚点」的兜底组。
+     * 另加两条同篇约束：**锚点种类不重复**、**最多 1 条无锚点**（两条都空表态最难看）。 */
+    var modToday = {};        // 模块 → 今天这个模块的量（done 栏目写下的数字，跨栏目一致）
+    var planShapes = {};      // 本篇已用过的锚点种类
+    var planInfoCache = {};
+
+    /* 该模块上次出现在「今日完成」里是哪天 —— 返回 { ago, last } 或 null */
+    function planLastDone(m) {
+      var keys = Object.keys(reports), best = null, i, ds, rr;
+      for (i = 0; i < keys.length; i++) {
+        ds = keys[i];
+        if (ds >= dateStr) continue;                    // 只看今天之前；日期串可直接比大小
+        if (best !== null && ds <= best) continue;
+        rr = reports[ds];
+        if (rr && rr.modules && rr.modules.indexOf(m) >= 0) best = ds;
+      }
+      if (best === null) return null;
+      var ago = Math.round((Store.parse(dateStr) - Store.parse(best)) / 864e5);
+      return { ago: ago < 1 ? 1 : ago, last: '星期' + '日一二三四五六'[Store.parse(best).getDay()] };
+    }
+
+    /* 该模块可用哪些锚点，以及对应的占位符取值（按模块缓存，避免重复扫 reports）
+     * 真值表 —— 只放行**成立**的锚点种类，这是硬约束：
+     *   今天做过            → left / n / today
+     *   今天没做、昨天做过  → yday（说「隔了 1 天没做」别扭，所以单独一组）
+     *   今天没做、上次更早  → ago（天数）/ last（星期几）—— 拆两类是为了让
+     *                         「今天没做过」的模块也有两个互不冲突的锚点可选
+     *   从没做过            → plain（兜底，永远成立） */
+    function planInfo(m) {
+      if (planInfoCache[m]) return planInfoCache[m];
+      var info;
+      if (modToday[m] !== undefined) {
+        info = { truth: { left: 1, n: 1, today: 1, plain: 1 },
+          vars: { n: modToday[m], left: 1 + Math.floor(rng() * 3) } };
+      } else {
+        var h = planLastDone(m);
+        if (h && h.ago === 1) info = { truth: { yday: 1, plain: 1 }, vars: {} };
+        else if (h && h.ago >= 2) {
+          info = { truth: { ago: 1, last: 1, plain: 1 }, vars: { ago: h.ago, last: h.last } };
+        } else info = { truth: { plain: 1 }, vars: {} };
+      }
+      planInfoCache[m] = info;
+      return info;
+    }
+
+    /* 模板属于哪一类锚点。⚠️ 顺序有意义：
+     * ① 先判占位符 —— 「今天还剩 2 项」里也有「今天」二字，反过来会误判成今天类；
+     * ② 「昨天」必须独立成 yday、**排在 today 之前** —— 「昨天刚做过」对
+     *    「今天做过」的模块是假话，混进 today 就会放出假事实。 */
+    function planKind(tpl) {
+      if (!tpl) return 'plain';
+      if (tpl.indexOf('{left}') >= 0) return 'left';
+      if (tpl.indexOf('{n}') >= 0) return 'n';
+      if (tpl.indexOf('{ago}') >= 0) return 'ago';
+      if (tpl.indexOf('{last}') >= 0) return 'last';
+      if (/昨天|前天/.test(tpl)) return 'yday';
+      if (/今天|今日/.test(tpl)) return 'today';
+      return 'plain';
+    }
+
+    function planFacts(m) {
+      var v = planInfo(m).vars;
+      return {
+        module: m, n: v.n || 0, left: v.left || 0,
+        ago: v.ago || 0, last: v.last || ''
+      };
+    }
+
+    /* 取一条「成立的」计划句。三级筛选，**任何一级都不放宽真值约束**。
+     * ⚠️ 这里踩过一个坑：最初的最后一级是 `pool.slice()`（退回整个池子），
+     * 于是给「今天没做过」的模块选中了「今天走了 {n} 项」的句式，而 n 拿不到值只能是 0，
+     * 生成出「短视频拍摄剪辑今天的0项里有一项卡了较久」这种**假事实**。
+     * 真值是关于世界的断言，必须硬约束；可以放弃的只有「锚点种类不重复」。
+     * poolOverride 用来指定别的池（收尾句用 planTail）—— 真值过滤对两个池都生效，
+     * 所以活动型模块取 planTail 时也会自动避开 {left}/{n}/{ago} 那些条目。 */
+    function planPick(m, poolOverride) {
+      var info = planInfo(m);
+      var pool = poolOverride ||
+        (/^(参加|学习|复盘|晨间)/.test(m) ? Phrases.plansActivity : Phrases.plans);
+      function cand(stage) {
+        return pool.filter(function (t) {
+          var k = planKind(t);
+          if (!info.truth[k]) return false;              // 真值：永不放宽
+          if (stage >= 2 && planShapes[k]) return false; // 锚点种类不重复
+          if (stage >= 3 && k === 'plain') return false; // 尽量不用无锚点兜底组
+          return true;
+        });
+      }
+      var list = cand(3);
+      if (!list.length) list = cand(2);
+      if (!list.length) list = cand(1);
+      if (!list.length) return '';                       // 理论上到不了：plain 永远成立
+      var pk = takeFresh(rng, list, m, planFacts(m), hist);
+      planShapes[planKind(pk.tpl)] = 1;
+      usedTpls.push(pk.tpl);
+      return pk.line;
+    }
+
     // 开头语（openers 池）多数以 {module} 起头，这里同样走预算：优先挑本篇还没用过的模块
     var vars = { weekday: weekday, dayN: dayN, n: 0, module: pickCapped(rng, mods, used, 3, config.modules) };
     var headExtra = [config.company, config.jobTitle].filter(Boolean).join(' · ');
@@ -628,6 +737,7 @@
         mods.forEach(function (m, i) {
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
           vars.n = dailyN(rng, config);
+          modToday[m] = vars.n;   // 供「明日计划」用同一批数字，跨栏目保持一致
           var pk = takeFresh(rng, isActivity ? Phrases.doneActivity : Phrases.done, m,
             { module: m, n: vars.n, weekday: weekday, dayN: dayN }, hist);
           usedTpls.push(pk.tpl);
@@ -688,18 +798,19 @@
 
       } else if (sec.key === 'plans') {
         var pp = [];
+        var pn = 0;
         if (sk.plansJoin) {
-          var parts = planMods.map(function (m) {
-            var pk2 = takeFresh(rng, Phrases.plans, m, { module: m }, hist);
-            usedTpls.push(pk2.tpl);
-            return pk2.line.replace(/。\s*$/, '');
+          /* 合并成一句时也走同一套锚点去重 */
+          var parts = [];
+          planMods.forEach(function (m) {
+            var s = planPick(m);
+            if (s) parts.push(s.replace(/。\s*$/, ''));
           });
-          pp.push(parts.join('；') + '。');
+          if (parts.length) pp.push(parts.join('；') + '。');
         } else {
-          planMods.forEach(function (m, i) {
-            var pk3 = takeFresh(rng, Phrases.plans, m, { module: m }, hist);
-            usedTpls.push(pk3.tpl);
-            pp.push(itemPrefix(sk, i) + pk3.line);
+          planMods.forEach(function (m) {
+            var s = planPick(m);
+            if (s) pp.push(itemPrefix(sk, pn++) + s);
           });
         }
         if (rng() < 0.5) {
@@ -712,9 +823,8 @@
           });
           var tm = tailCand.length ? pickCapped(rng, tailCand, used, 3) : '';
           if (!tm) tm = planMods[0] || mods[0] || '';
-          var pt = takeFresh(rng, Phrases.planTail, tm, { module: tm }, hist);
-          usedTpls.push(pt.tpl);
-          pp.push(pt.line);
+          var ts = planPick(tm, Phrases.planTail);
+          if (ts) pp.push(ts);
         }
         emit(title, pp);
       }

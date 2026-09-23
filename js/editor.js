@@ -111,23 +111,52 @@
     return Generator.charCount($('reportEditor').value);
   }
 
+  /* ---------- 复制到剪贴板 ----------
+   * ⚠️ iOS Safari 有三条硬约束，改这里之前先读（三条都踩过）：
+   *   ① **同步**：`execCommand('copy')` 不得位于 Promise.then / setTimeout / async 的后续微任务里 ——
+   *      它必须待在「用户点击」这个手势的同步调用栈内，否则手势链断掉、必然返回 false。
+   *      所以这里是**先同步试 execCommand，失败才异步回退到 Clipboard API**。
+   *      原来写法正好相反（先 Clipboard API，把 execCommand 放进 .then 的回调）——
+   *      那条路在 iOS 上 100% 失败，用户只能看到「复制失败，请手动全选复制」，然后手动长按全选。
+   *   ② **焦点**：临时元素要真的拿到焦点（document.activeElement === el）；聚焦时别让页面跳动。
+   *   ③ **可见性**：不能用 opacity:0 / display:none / visibility:hidden（iOS 视为不可见 → 拒绝复制），
+   *      要用「移出视口但依然可见」—— position:fixed + left:-9999px。
+   *   另两个坑：**必须用 textarea 而不是 input**（input 的 value 会去掉换行符，日报会被压成一行）；
+   *   加 readonly 是为了不让 iOS 弹软键盘。故意不加 aria-hidden —— 可聚焦元素加它反而违反 ARIA 规范，
+   *   这里用 tabindex="-1" 就够（它存在时间只有几微秒）。
+   * @returns {boolean} 是否复制成功
+   */
+  function syncCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.setAttribute('tabindex', '-1');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px;width:1px;height:1px;'
+      + 'padding:0;border:0;outline:none;box-shadow:none;background:transparent;';
+    document.body.appendChild(ta);
+    var ok = false;
+    try {
+      ta.focus({ preventScroll: true });
+      ta.setSelectionRange(0, ta.value.length);        // ⚠️ 光靠 select() 在 iOS 上不可靠
+      ok = document.execCommand('copy') === true;      // ⚠️ 必须看返回值，否则静默失败也会报「已复制」
+    } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
   function copyText(text, tip) {
-    function fallback() {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); App.toast(tip || '已复制，去学习通粘贴提交吧'); }
-      catch (e) { App.toast('复制失败，请手动全选复制'); }
-      document.body.removeChild(ta);
-    }
+    var okTip = tip || '已复制，去学习通粘贴提交吧';
+    var failTip = '复制失败：请长按下方正文「全选」后复制';
+    if (syncCopy(text)) { App.toast(okTip); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        App.toast(tip || '已复制，去学习通粘贴提交吧');
-      }, fallback);
-    } else fallback();
+        App.toast(okTip);
+      }, function () {
+        App.toast(failTip, 'error');
+      });
+      return;
+    }
+    App.toast(failTip, 'error');
   }
 
   function printText(text, title) {
@@ -607,6 +636,7 @@
       refreshDraftHint();
     },
     copyText: copyText,
+    syncCopy: syncCopy,     // 供测试直接验证「同步路径」的三条 iOS 约束（见 integration.test.js）
     printText: printText
   };
 })();

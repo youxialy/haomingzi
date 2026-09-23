@@ -503,6 +503,101 @@ async function main() {
   ok(!!G.window.document.getElementById('toast'), 'guide.html 能解析并保留 toast 容器');
 
   /* ============================================================
+   * 13. 复制到剪贴板（iOS 三条硬约束的回归锁）
+   *
+   * 起因（2026-09-23）：iOS Safari 要求 execCommand('copy') **待在用户手势的同步调用栈内**，
+   * 不得位于 Promise.then / setTimeout / 后续微任务里。旧实现先调 Clipboard API、把 execCommand
+   * 放进 .then 的兜底 → 手势链断掉 → iPhone 上复制失败，只能提示「请手动全选复制」。
+   * 这里锁四件事：① 同步路径**先于** Clipboard API 被调用 ② 临时元素是 textarea（input 会吃掉换行）
+   *              ③ 元素真的拿到焦点 + setSelectionRange 生效 + 满足 iOS「可见性」要求
+   *              ④ 用完即清理，不留 DOM 残留
+   * ============================================================ */
+  section('13. 复制到剪贴板（iOS 同步约束）');
+  {
+    var hadExec = typeof doc.execCommand === 'function';
+    var origExec = doc.execCommand;
+    var origClip = win.navigator.clipboard;
+    var calls = [], seen = null, seenVal = null, seenInDoc = false;
+    var SAMPLE = '第一行\n第二行';
+
+    function mockExec(ret) {
+      doc.execCommand = function () {
+        calls.push('exec');
+        seen = doc.activeElement;                 // 抓「谁真的拿到了焦点」
+        seenVal = seen ? seen.value : null;
+        // ⚠️ 必须在「当场」判断是否挂在文档上 —— 复制结束后元素会被移除，那时 parentNode 已变 null
+        seenInDoc = !!(seen && seen.parentNode);
+        return ret;
+      };
+    }
+    function mockApi(ok2) {
+      var called = false;
+      win.navigator.clipboard = {
+        writeText: function () {
+          called = true;
+          return ok2 ? Promise.resolve() : Promise.reject(new Error('nope'));
+        }
+      };
+      return function () { return called; };
+    }
+
+    try {
+      /* ---- ① 同步路径优先（旧实现正好相反） ---- */
+      var nTa = doc.querySelectorAll('textarea').length;
+      mockExec(true);
+      var apiCalled = mockApi(true);
+      win.Editor.copyText(SAMPLE);
+      ok(calls.length > 0 && calls[0] === 'exec',
+        'execCommand 先于 Clipboard API 被调用（旧实现反了 → iOS 上必然失败）', calls.join(' > '));
+      ok(apiCalled() === false, '同步路径成功时不再调用 Clipboard API');
+
+      /* ---- ② 临时元素的形态 ---- */
+      ok(!!seen && seen.tagName === 'TEXTAREA',
+        'execCommand 执行时持焦点的是临时 textarea（focus 落到实处，且用 textarea 而不是 input —— '
+        + 'input 的 value 会吃掉换行，日报会被压成一行）',
+        seen ? seen.tagName : 'activeElement 为空');
+      ok(seenVal === SAMPLE, '内容完整、换行保留', JSON.stringify(seenVal));
+      ok(!!seen && seen.hasAttribute('readonly'), '临时元素是 readonly（否则 iOS 会弹软键盘）');
+
+      /* ---- ③ iOS 的三条约束 ---- */
+      /* 焦点这条由上面那句覆盖：mock 里抓的 doc.activeElement 就是「谁真的拿到了焦点」。
+       * 这里补一条「复制时元素确实在文档里」—— iOS 要求被选中的是真实存在的元素。
+       * （seenInDoc 是当场抓的：复制结束后元素已被移除，那时再看 parentNode 已经晚了） */
+      ok(seenInDoc, '复制发生时元素已挂进文档（不是在游离节点上选）');
+      ok(!!seen && seen.selectionStart === 0 && seen.selectionEnd === SAMPLE.length,
+        'setSelectionRange 选中了全部内容（光靠 select() 在 iOS 上不可靠）',
+        seen ? (seen.selectionStart + '~' + seen.selectionEnd) : '');
+      var st = seen ? seen.style : null;
+      ok(!!st && st.opacity !== '0' && st.display !== 'none' && st.visibility !== 'hidden',
+        '元素不是「不可见」（iOS 会因为 opacity:0 / display:none 拒绝复制）', st ? st.cssText : '');
+      ok(!!st && /-?\d{4}px/.test(st.left || ''), '元素靠「移出视口」隐藏而不是靠透明', st ? st.left : '');
+
+      /* ---- ④ 清理 ---- */
+      ok(doc.querySelectorAll('textarea').length === nTa, '临时元素用完即清理，DOM 不留残留');
+
+      /* ---- ⑤ 同步失败 → 回退 Clipboard API ---- */
+      calls = [];
+      mockExec(false);
+      var api2 = mockApi(true);
+      win.Editor.copyText('x');
+      ok(calls.indexOf('exec') === 0 && api2() === true, '同步失败时回退到 Clipboard API', calls.join(' > '));
+
+      /* ---- ⑥ 两条都失败 → 明确提示（不再静默） ---- */
+      mockExec(false);
+      mockApi(false);
+      win.Editor.copyText('x');
+      await Promise.resolve();
+      await Promise.resolve();
+      var tt = doc.getElementById('toast');
+      ok(!!tt && tt.textContent.indexOf('复制失败') >= 0,
+        '两条路都失败时给出明确提示（旧实现失败也可能显示「已复制」）', tt ? tt.textContent : '');
+    } finally {
+      if (hadExec) doc.execCommand = origExec; else delete doc.execCommand;
+      win.navigator.clipboard = origClip;
+    }
+  }
+
+  /* ============================================================
    * 汇总
    * ============================================================ */
   console.log('\n================================');

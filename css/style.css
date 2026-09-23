@@ -267,9 +267,6 @@ textarea { resize: vertical; line-height: 1.8; }
 .layout-sub label { font-size: 13px; color: var(--text-soft); display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
 .hint.warn { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 10px; }
 
-.boundary { border-left: 4px solid var(--warn); }
-.boundary p { font-size: 13.5px; margin: 6px 0; }
-
 /* ---------- 页脚 / Toast ---------- */
 .footer { max-width: 960px; margin: 28px auto 0; padding: 0 16px; text-align: center; font-size: 13px; color: var(--text-soft); }
 #toast {

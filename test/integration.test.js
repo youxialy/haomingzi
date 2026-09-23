@@ -656,6 +656,71 @@ async function main() {
   }
 
   /* ============================================================
+   * 15. 「数量表达」两档（设置项 + 生成结果）
+   *
+   * 用户反馈：「今天完成 8 项 / 12 项」连着几条读着奇怪 → 做成选项，两套句式都留着。
+   * 这里走完整 UI：设置页有选项、默认「不写件数」、切换立刻生效、生成结果确实变了。
+   * ============================================================ */
+  section('15. 数量表达两档（设置项 + 生成结果）');
+  {
+    var N = await boot();
+    var ndoc = N.doc;
+    tabTo(ndoc, 'settings');
+    ndoc.querySelectorAll('#jobGrid .job-card')[0].click();
+    ndoc.getElementById('cfgStart').value = '2026-09-01';
+    ndoc.getElementById('cfgEnd').value = '2026-12-31';
+    ndoc.getElementById('cfgMinWords').value = '300';
+    ndoc.getElementById('cfgSave').click();
+
+    var radios = ndoc.querySelectorAll('#numStyleBox input[name=numStyle]');
+    ok(radios.length === 2, '设置页有「数量表达」两个选项（拿到 ' + radios.length + ' 个）');
+    var radioOf = function (v) {
+      return [].filter.call(radios, function (r) { return r.value === v; })[0];
+    };
+    var checkedVal = function () {
+      var v = null;
+      [].forEach.call(radios, function (r) { if (r.checked) v = r.value; });
+      return v;
+    };
+    ok(checkedVal() === '', '默认选中「不写件数」（没配置也要回显，不能两个都不选）', String(checkedVal()));
+
+    var genNum = function () {
+      tabTo(ndoc, 'daily');
+      var di = ndoc.getElementById('dateInput');
+      di.value = '2026-09-23';
+      fire(di, 'change');
+      ndoc.getElementById('genBtn').click();
+      return ndoc.getElementById('reportEditor').value;
+    };
+
+    /* ⚠️ 只查「完成量」类报数（完成 / 办结 / 共 …），**别用裸 /\d+项/** ——
+     * {left}（「今天还剩 1 项没走完」「还有 1 项留着明天做」）是**刻意保留**的：
+     * 它是 1~3 的小数字、表示"剩余量"而不是"完成了多少"，不算报数。 */
+    var COUNT_RE = /(?:完成|办结|推进|处理|落实|做了|共计|合计|共|累计|清完)\s*\d+\s*项/;
+
+    var plainText = genNum();
+    ok(plainText.length > 50, '默认档能正常生成');
+    ok(!COUNT_RE.test(plainText), '默认档（不写件数）的正文里没有「完成 N 项」这类报数',
+      plainText.split('\n').filter(function (l) { return COUNT_RE.test(l); }).join(' / '));
+
+    var countRadio = radioOf('count');
+    ok(!!countRadio, '能找到「写具体件数」选项');
+    countRadio.checked = true;
+    fire(countRadio, 'change');
+    ok(N.win.Store.data.settings.numStyle === 'count',
+      '选中即写入 settings（属于本机偏好，不用点「保存配置」）', String(N.win.Store.data.settings.numStyle));
+    var countText = genNum();
+    ok(COUNT_RE.test(countText), '「写具体件数」档的正文里有「完成 N 项」',
+      countText.split('\n').filter(function (l) { return COUNT_RE.test(l); }).join(' / '));
+
+    var plainRadio = radioOf('');
+    plainRadio.checked = true;
+    fire(plainRadio, 'change');
+    ok(N.win.Store.data.settings.numStyle === '', '能切回「不写件数」');
+    ok(!COUNT_RE.test(genNum()), '切回后正文里又没有「完成 N 项」了');
+  }
+
+  /* ============================================================
    * 汇总
    * ============================================================ */
   console.log('\n================================');

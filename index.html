@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026092304">
+<link rel="stylesheet" href="css/style.css?v=2026092305">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -293,7 +293,14 @@
         <p class="hint warn" id="layoutWarn" role="status"></p>
       </div>
 
-      <h3 class="card-title mt">⑥ 日报栏目（可改名、可关闭；「今日完成」为核心栏目不可关闭）</h3>
+      <h3 class="card-title mt">⑥ 数量表达（「今日完成」怎么写）</h3>
+      <p class="hint">只改「今日完成」栏目的写法，其余栏目不受影响。两档用的是各自独立的句式库，随时可以切换。</p>
+      <div class="layout-box" id="numStyleBox" role="radiogroup" aria-label="数量表达">
+        <label class="layout-opt"><input type="radio" name="numStyle" value=""><span><b>不写件数（默认）</b><i>图文内容选题策划今天把该走的流程都走完了，没有遗漏环节。</i></span></label>
+        <label class="layout-opt"><input type="radio" name="numStyle" value="count"><span><b>写具体件数</b><i>图文内容选题策划方面今天完成 8 项，过程按规范走，没有遗漏环节。</i></span></label>
+      </div>
+
+      <h3 class="card-title mt">⑦ 日报栏目（可改名、可关闭；「今日完成」为核心栏目不可关闭）</h3>
       <p class="hint">学校模板不一样就改成一样的：比如只要两栏，就把后两栏的勾去掉。</p>
       <div id="sectionsBox"></div>
 
@@ -362,12 +369,12 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026092304"></script>
-<script defer src="js/phrases.js?v=2026092304"></script>
-<script defer src="js/generator.js?v=2026092304"></script>
-<script defer src="js/composer.js?v=2026092304"></script>
-<script defer src="js/editor.js?v=2026092304"></script>
-<script defer src="js/calendar.js?v=2026092304"></script>
-<script defer src="js/app.js?v=2026092304"></script>
+<script defer src="js/store.js?v=2026092305"></script>
+<script defer src="js/phrases.js?v=2026092305"></script>
+<script defer src="js/generator.js?v=2026092305"></script>
+<script defer src="js/composer.js?v=2026092305"></script>
+<script defer src="js/editor.js?v=2026092305"></script>
+<script defer src="js/calendar.js?v=2026092305"></script>
+<script defer src="js/app.js?v=2026092305"></script>
 </body>
 </html>

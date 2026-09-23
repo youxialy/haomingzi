@@ -87,7 +87,7 @@ var sample = {
   moduleStats: { '接听客户来电': { count: 3, lastDate: '2026-09-07' } },
   customPhrases: ['我的常用句式'],
   todos: [{ id: 't1', text: '学习通上班打卡', done: false }],
-  settings: { theme: 'dark' }
+  settings: { theme: 'dark', numStyle: 'count' }
 };
 
 var ctx2 = makeCtx();
@@ -97,7 +97,7 @@ ctx2.Store.data.savedAgg = JSON.parse(JSON.stringify(sample.savedAgg));
 ctx2.Store.data.moduleStats = JSON.parse(JSON.stringify(sample.moduleStats));
 ctx2.Store.data.customPhrases = sample.customPhrases.slice();
 ctx2.Store.data.todos = JSON.parse(JSON.stringify(sample.todos));
-ctx2.Store.data.settings = { theme: 'dark' };
+ctx2.Store.data.settings = { theme: 'dark', numStyle: 'count' };
 
 var code = ctx2.Store.makeCode();
 ok(code.indexOf('IR2:') === 0, '生成的是新版压缩备份码（IR2: 前缀）');
@@ -121,6 +121,8 @@ ok(d.moduleStats['接听客户来电'] && d.moduleStats['接听客户来电'].co
 ok(d.customPhrases[0] === '我的常用句式', '自建句式保留');
 ok(d.todos[0].text === '学习通上班打卡', '待办保留');
 ok(d.settings.theme === 'dark', '主题偏好保留');
+ok(d.settings.numStyle === 'count',
+  '数量表达偏好保留（新增 settings 字段必须登记 store.js 的 sanitize 白名单，否则被静默丢弃）');
 ok(d.drafts && Object.keys(d.drafts.daily).length === 0, '临时草稿不进备份');
 
 /* ============================================================

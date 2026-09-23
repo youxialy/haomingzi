@@ -251,7 +251,9 @@ section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
   var rate = {
     openers: 1, openersMon: 0.6 / 7, openersFri: 0.6 / 7, done: 3, doneActivity: 1.5,
     gains: 1, gainsTail: 0.6, problems: 0.65, solutions: 0.65, noProblem: 0.35,
-    plans: 2, plansActivity: 0.7, planTail: 0.5, fillers: 1
+    plans: 2, plansActivity: 0.7, planTail: 0.5, fillers: 1,
+    /* 「不写件数」档专用的备选池（settings.numStyle）。90 条 ÷ 日均 3 次 = 30 天 */
+    donePlain: 3
   };
   var worst = null;
   Object.keys(rate).forEach(function (k) {
@@ -261,7 +263,8 @@ section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
   });
   ok(worst.cycle >= 20, '最小循环周期 ' + worst.cycle.toFixed(1) + ' 天（' + worst.name + '，' + worst.size + ' 条）≥ 20 天');
   // 模块绑定池必须 100% 含 {module}，否则换岗位就是同一句话
-  var bound = ['done', 'doneActivity', 'gains', 'problems', 'solutions', 'plans', 'plansActivity'];
+  var bound = ['done', 'donePlain', 'doneActivity', 'gains', 'problems', 'solutions',
+    'plans', 'plansActivity'];
   var noMod = [];
   bound.forEach(function (k) {
     (Phrases[k] || []).forEach(function (t) { if (t.indexOf('{module}') < 0) noMod.push(k + ':' + t.slice(0, 12)); });
@@ -316,7 +319,8 @@ section('M6 同栏目整段重复（同一栏目、整段逐字相同）');
 section('M7 模板病句（「按时进行参加晨会」这类通用动词 + 模块首词撞车）');
 (function () {
   var pools = ['done', 'doneActivity', 'gains', 'gainsTail', 'problems', 'solutions',
-    'noProblem', 'plans', 'plansActivity', 'planTail', 'fillers', 'openers', 'openersMon', 'openersFri',
+    'noProblem', 'donePlain', 'plans', 'plansActivity', 'planTail', 'fillers',
+    'openers', 'openersMon', 'openersFri',
     /* 补漏：这三个池以前不在巡检范围内，「补充记录」的句式一直没被这条断言覆盖。
      * 补上后立刻查出一条旧规则的误报（见 badJoin 里对「首二字相同」的动词限定）。 */
     'noteLead', 'noteAct', 'noteEnd'];
@@ -1352,6 +1356,8 @@ section('M18 明日计划的事实锚点（套话治理）');
   var twoPlain = 0, days = 0, crossBad = 0, crossChk = 0, gen = 0;
   var groupUse = {}, claimBad = [];
   var jobs = Object.keys(Phrases.jobTypes);
+  /* 本组验的是**默认档**（不写件数）。改档位会换池，所以显式设一次，别依赖默认值。 */
+  Store.data.settings.numStyle = '';
 
   jobs.forEach(function (jk) {
     var mods = Phrases.jobTypes[jk].modules.slice();
@@ -1486,9 +1492,10 @@ section('M18 明日计划的事实锚点（套话治理）');
   ok(dupNonPlain / (days || 1) <= 0.05,
     '同篇锚点种类重复（非 plain）天数占比 ' + pct(dupNonPlain / (days || 1)) + ' ≤ 5%'
     + '（' + dupNonPlain + '/' + days + ' 天，共 ' + kindDup + ' 处重复）');
-  ok(crossBad === 0 && crossChk > 0,
-    '跨栏目数字一致：计划句的「今天 N 项」与「今日完成」相同模块一致（校验 ' + crossChk + ' 处）',
-    '不一致 ' + crossBad + ' 处');
+  /* 「不写件数」档压根不该出现「N项」，所以跨栏目数字一致的锁挪到 count 档去验（见下面 ⑦）。
+   * 这里反过来锁「默认档不得出现数字报数」—— 这才是这一档的承诺。 */
+  ok(crossChk === 0 && crossBad === 0,
+    '默认档（不写件数）不该出现「今天 N 项」这类句子（校验 ' + crossChk + ' 处）');
   ok(claimBad.length === 0,
     '独立判据：句子字面说「今天/昨天」时该模块当天确实做过（不依赖 planKind）',
     claimBad.slice(0, 3).join(' | '));
@@ -1505,6 +1512,63 @@ section('M18 明日计划的事实锚点（套话治理）');
   });
   ok(minCycle >= 20, '每个锚点组的子周期 ' + minCycle.toFixed(1) + ' 天 ≥ 20 天（最短 '
     + worstG + '；M5 只算整池，会掩盖分组错配）');
+
+  /* ⑦ 「写件数」档（settings.numStyle = 'count'）：换回 done 池，跨栏目数字一致必须成立。
+   * 两档共用同一套骨架/模块逻辑、只换了池，所以这里用较少样本单独验一遍。 */
+  Store.data.settings.numStyle = 'count';
+  (function () {
+    var withNum = 0, docs = 0, cChk = 0, cBad = [], cResidue = 0;
+    Object.keys(Phrases.jobTypes).forEach(function (jk) {
+      var jt = Phrases.jobTypes[jk];
+      var cfg = {
+        jobType: jk, company: '示例', jobTitle: '实习', modules: jt.modules.slice(), custom: [],
+        sections: null, minWords: 0, dailyLoad: 10, startDate: '2026-09-01', endDate: '2026-12-31', layout: ''
+      };
+      var rep = {}, st = {};
+      ['2026-09-01', '2026-09-02', '2026-09-03'].forEach(function (ds) {
+        var r = Generator.generateDaily(ds, cfg, rep, st, '');
+        if (!r) return;
+        docs++;
+        rep[ds] = { date: ds, text: r.text, modules: r.modules, tpls: r.tpls, problem: r.problem };
+        if (/\d+\s*项/.test(r.text)) withNum++;
+        if (/\{\w+\}/.test(r.text)) cResidue++;
+
+        var ls = r.text.split('\n');
+        var atDone = -1, atPlans = -1;
+        ls.forEach(function (ln, i) {
+          if (atDone < 0 && ln.indexOf('今日完成') >= 0) atDone = i;
+          if (ln.indexOf('明日计划') >= 0) atPlans = i;
+        });
+        if (atDone < 0 || atPlans < 0 || atPlans <= atDone) return;
+        var pick = function (from, to) {
+          var out = {};
+          ls.slice(from, to).forEach(function (ln) {
+            var hit = cfg.modules.filter(function (m) { return ln.indexOf(m) >= 0; });
+            if (hit.length !== 1) return;
+            /* ⚠️ 只抓「完成量」类数字（完成 / 办结 / 共 …），别用裸 (\d+)项 ——
+             * 那会把 {left} 句（「今天还剩 1 项没走完」）也抓进来，跟完成量根本不该相等 → 误报。 */
+            var mm = /(?:完成|办结|推进|处理|落实|做了|共计|合计|共|累计|清完)\s*(\d+)\s*项/.exec(ln);
+            if (mm) out[hit[0]] = Number(mm[1]);
+          });
+          return out;
+        };
+        var dn = pick(atDone + 1, atPlans);
+        var pn = pick(atPlans + 1, ls.length);
+        Object.keys(pn).forEach(function (m) {
+          if (dn[m] === undefined) return;
+          cChk++;
+          if (dn[m] !== pn[m]) cBad.push(ds + ' ' + m + ' 今日完成' + dn[m] + ' vs 计划' + pn[m]);
+        });
+      });
+    });
+    ok(docs > 0 && withNum / docs >= 0.9,
+      '「写件数」档：' + pct(withNum / docs) + ' 的篇出现「N项」（这一档本来就该有件数）');
+    ok(cBad.length === 0 && cChk > 0,
+      '「写件数」档：跨栏目数字一致（计划句的「今天 N 项」=「今日完成」同一模块，校验 ' + cChk + ' 处）',
+      cBad.slice(0, 3).join(' | '));
+    ok(cResidue === 0, '「写件数」档没有占位符残留', String(cResidue) + ' 篇');
+  })();
+  Store.data.settings.numStyle = '';   // 还原默认档，别影响后面的小节
   console.log('  · 锚点分布：今天数字 ' + (tot - plain - unknown - 0) + ' 句中，无锚点 ' + plain
     + ' 句（' + pct(plain / (tot || 1)) + '），未匹配模板 ' + unknown + ' 句');
 })();

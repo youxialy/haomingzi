@@ -674,6 +674,7 @@
       var info = planInfo(m);
       var pool = poolOverride ||
         (/^(参加|学习|复盘|晨间)/.test(m) ? Phrases.plansActivity : Phrases.plans);
+      pool = poolByStyle(pool);      // 「不写件数」档会筛掉带 {n} 的句式（「今天走了 12 项」）
       function cand(stage) {
         return pool.filter(function (t) {
           var k = planKind(t);
@@ -721,6 +722,21 @@
      * 所以要按「实际会输出的栏目数」算（`sec.on || sec.key === 'done'`），不能只看 on。
      * 改这里时别忘了同步那一处。 */
     var soloSection = sections.filter(function (sec) { return sec.on || sec.key === 'done'; }).length <= 1;
+
+    /* 「数量表达」两档（settings.numStyle，设置页可选）：
+     *   'count' = 写具体件数（「今天完成 8 项」）
+     *   其余（默认）= 不写件数，改用「整轮走完 / 这批 / 量不算大 / 集中办完」这类说法
+     * ⚠️ 不写数字时，plans / planTail 里带 {n} 的句式会被**筛掉**（它们 {n} 占比低，过滤后容量仍够）；
+     *    但 done 池 90% 带 {n}，筛完只剩 10 条 → 会疯狂重复，所以 done 单独准备了一套 donePlain。
+     * ⚠️ 它是 **settings（本机偏好）而不是 config（岗位配置）**，所以不进 cfgKey ——
+     *    这符合它的性质，但**别指望"换档位只改「今日完成」一栏"**：
+     *    countStyle 决定了取哪个池，而 pickFresh 里 pickN 的抽数取决于池大小，
+     *    所以换档位后 rng 流会在 done 栏目处分岔，整篇是一份新报告（骨架也可能换）。
+     *    这不影响可复现性：同一档位 + 同一天 + 同配置仍然逐字一致（M16 第⑨组盯着）。 */
+    var countStyle = !!(Store.data.settings && Store.data.settings.numStyle === 'count');
+    function poolByStyle(pool) {
+      return countStyle ? pool : pool.filter(function (t) { return t.indexOf('{n}') < 0; });
+    }
     var secNo = 0;
     var problem = null;
     var doneAt = -1;    // 「今日完成」正文之后的插入点（补充记录续在此处）
@@ -744,7 +760,10 @@
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
           vars.n = dailyN(rng, config);
           modToday[m] = vars.n;   // 供「明日计划」用同一批数字，跨栏目保持一致
-          var pk = takeFresh(rng, isActivity ? Phrases.doneActivity : Phrases.done, m,
+          /* 事务型模块按「数量表达」档选池：count = done（带件数）；默认 = donePlain（不报数） */
+          var pk = takeFresh(rng, isActivity
+            ? Phrases.doneActivity
+            : (countStyle ? Phrases.done : Phrases.donePlain), m,
             { module: m, n: vars.n, weekday: weekday, dayN: dayN }, hist);
           usedTpls.push(pk.tpl);
           doneLines.push(itemPrefix(sk, i) + pk.line);

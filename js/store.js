@@ -38,7 +38,9 @@
         agg: {},           //   'weekly_2026-09-14_2026-09-20' -> { text, updatedAt }
         summary: ''        //   实习总结草稿纯文本
       },
-      settings: { theme: '', deviceId: '' }  // theme: '' = 跟随系统；deviceId 见 ensureDeviceId()
+      /* theme: '' = 跟随系统；deviceId 见 ensureDeviceId()；
+       * numStyle: '' = 今日完成不写件数（默认）；'count' = 写「完成 N 项」 */
+      settings: { theme: '', deviceId: '', numStyle: '' }
     };
   };
 
@@ -287,7 +289,11 @@
 
     /* ---- settings：只保留自己认识的键 ---- */
     var st = isPlainObject(raw.settings) ? raw.settings : {};
-    out.settings = { theme: (st.theme === 'dark' || st.theme === 'light') ? st.theme : '' };
+    out.settings = {
+      theme: (st.theme === 'dark' || st.theme === 'light') ? st.theme : '',
+      // ⚠️ 新增 settings 字段必须登记在这里，否则导入备份码时被静默丢弃（「换设备后设置丢了」）
+      numStyle: st.numStyle === 'count' ? 'count' : ''
+    };
     if (typeof st.installDismissedAt === 'number') out.settings.installDismissedAt = st.installDismissedAt;
     if (typeof st.lastBackupAt === 'number') out.settings.lastBackupAt = st.lastBackupAt;
 

@@ -253,6 +253,27 @@
     return uiToLayout(mode, $('layoutFixed').value);
   }
 
+  /* ---------- 「数量表达」两档（settings.numStyle）----------
+   * '' = 不写件数（默认，用 donePlain 池）；'count' = 写「完成 N 项」（用 done 池）。
+   * ⚠️ 它是 settings（本机偏好）而不是 config（岗位配置）—— 故意不进 cfgKey：
+   *    这样换档位时骨架、模块选择、其他栏目都不变，只有「今日完成」的句式变，便于对比。
+   * ⚠️ 新增 settings 字段必须同步 store.js 的 sanitize 白名单，否则导入备份码时被静默丢弃。 */
+  function loadNumStyle() {
+    var v = (Store.data.settings && Store.data.settings.numStyle) === 'count' ? 'count' : '';
+    document.querySelectorAll('input[name=numStyle]').forEach(function (r) { r.checked = (r.value === v); });
+  }
+  function bindNumStyle() {
+    document.querySelectorAll('input[name=numStyle]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        if (!Store.data.settings) Store.data.settings = {};
+        Store.data.settings.numStyle = (r.value === 'count') ? 'count' : '';
+        Store.save();
+        toast(r.value === 'count' ? '「今日完成」会写具体件数' : '「今日完成」不再写件数');
+      });
+    });
+  }
+
   function renderJobGrid() {
     var grid = $('jobGrid');
     grid.innerHTML = '';
@@ -455,6 +476,7 @@
     $('cfgWeeklyDue').value = cfg.weeklyDue || '';
     $('cfgMonthlyDue').value = cfg.monthlyDue || '';
     loadLayoutToWizard(cfg.layout);
+    loadNumStyle();
     renderSectionsEditor(cfg.sections && cfg.sections.length ? cfg.sections : Generator.defaultSections());
     renderJobGrid();
     renderModuleBox();
@@ -760,6 +782,8 @@
       r.addEventListener('change', syncLayoutUi);
     });
     syncLayoutUi();
+    bindNumStyle();   // 数量表达两档：选中即存（属于本机偏好，不走「保存配置」）
+    loadNumStyle();   // ⚠️ 打开页面就要回显一次：没配置时 loadConfigToWizard 不会跑，否则两个单选都不选中
 
     // 素材库
     renderPhraseCats();

@@ -598,6 +598,64 @@ async function main() {
   }
 
   /* ============================================================
+   * 14. 只启用一个栏目时不输出章节大序号
+   *
+   * 用户反馈：只勾选「今日完成」时，正文前面孤零零一个「（一）」，读着很怪 ——
+   * 只有一栏，序号没有区分作用。这里走完整 UI 链路（勾选 → 保存 → 生成）验证。
+   * ⚠️ 判「只有一个栏目」的口径必须与生成侧的保留条件一致：
+   * 「今日完成」是强制保留的核心栏目，所以按「实际会输出的栏目数」算。
+   * ============================================================ */
+  section('14. 单栏目时不输出章节大序号');
+  {
+    var SEC_PREFIX = /^(?:[一二三四五六七八]、|（[一二三四五六七八]）|【[一二三四五六七八]】|[一二三四五六七八]）)/;
+    var headOf = function (text, title) {
+      var hit = text.split('\n').filter(function (l) { return l.indexOf(title) >= 0; })[0];
+      return (hit || '').trim();
+    };
+    var genOn = function (bdoc, bwin, date) {
+      tabTo(bdoc, 'daily');
+      var di = bdoc.getElementById('dateInput');
+      di.value = date;
+      fire(di, 'change');
+      bdoc.getElementById('genBtn').click();
+      return bdoc.getElementById('reportEditor').value;
+    };
+    var setSections = function (bdoc, onKeys) {
+      [].forEach.call(bdoc.querySelectorAll('#sectionsBox .sec-row'), function (row) {
+        var cb = row.querySelector('input[type=checkbox]');
+        cb.checked = onKeys.indexOf(cb.dataset.key) >= 0 || cb.disabled;   // done 不可关闭
+      });
+      bdoc.getElementById('cfgSave').click();
+    };
+
+    var S = await boot();
+    var sdoc = S.doc;
+    tabTo(sdoc, 'settings');
+    sdoc.querySelectorAll('#jobGrid .job-card')[0].click();
+    sdoc.getElementById('cfgStart').value = '2026-09-01';
+    sdoc.getElementById('cfgEnd').value = '2026-12-31';
+    sdoc.getElementById('cfgMinWords').value = '300';
+
+    var rows = sdoc.querySelectorAll('#sectionsBox .sec-row');
+    ok(rows.length === 4, '栏目编辑区渲染出 4 行（拿到 ' + rows.length + ' 行）');
+
+    /* ---- 只留「今日完成」 ---- */
+    setSections(sdoc, ['done']);
+    var solo = genOn(sdoc, S.win, '2026-09-23');
+    var soloHead = headOf(solo, '今日完成');
+    ok(soloHead === '今日完成', '只勾选「今日完成」时，该行就是纯标题（无大序号）', JSON.stringify(soloHead));
+    ok(!solo.split('\n').some(function (l) { return SEC_PREFIX.test(l.trim()); }),
+      '全篇没有任何带大序号的行', solo.split('\n').filter(function (l) { return SEC_PREFIX.test(l.trim()); }).join(' | '));
+
+    /* ---- 放开第二栏 → 大序号应恢复 ---- */
+    setSections(sdoc, ['done', 'gains']);
+    var two = genOn(sdoc, S.win, '2026-09-23');
+    var twoHead = headOf(two, '今日完成');
+    ok(SEC_PREFIX.test(twoHead), '两个以上栏目时大序号回来（正文没被改坏）', JSON.stringify(twoHead));
+    ok(two.indexOf('收获与学习') > 0, '第二栏确实输出了');
+  }
+
+  /* ============================================================
    * 汇总
    * ============================================================ */
   console.log('\n================================');

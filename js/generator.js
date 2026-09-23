@@ -715,6 +715,12 @@
 
     // 栏目驱动成文：按 config.sections 的顺序/标题/开关输出，「今日完成」强制保留
     var sections = (config.sections && config.sections.length) ? config.sections : defaultSections();
+    /* 只启用一个栏目时，章节大序号（「一、」/「（一）」/「【一】」/「一）」）没有区分作用，纯属多余 ——
+     * 用户反馈：只勾选「今日完成」时，正文前面孤零零一个「（一）」读着很怪。
+     * ⚠️ 判断口径必须和下面 forEach 里的保留条件完全一致：「今日完成」是强制保留的核心栏目，
+     * 所以要按「实际会输出的栏目数」算（`sec.on || sec.key === 'done'`），不能只看 on。
+     * 改这里时别忘了同步那一处。 */
+    var soloSection = sections.filter(function (sec) { return sec.on || sec.key === 'done'; }).length <= 1;
     var secNo = 0;
     var problem = null;
     var doneAt = -1;    // 「今日完成」正文之后的插入点（补充记录续在此处）
@@ -722,7 +728,7 @@
 
     function emit(title, body) {
       lines.push('');
-      lines.push(secPrefix(sk.secStyle, secNo) + title);
+      lines.push((soloSection ? '' : secPrefix(sk.secStyle, secNo)) + title);
       for (var i = 0; i < body.length; i++) lines.push(body[i]);
       secNo++;
     }

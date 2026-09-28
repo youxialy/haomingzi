@@ -1291,6 +1291,72 @@
     ]
   };
 
+  /* 聚合稿「下周期工作计划」：挂靠**本期事实**（2026-09-28 新增）。
+   * 起因：实测 12 期周报，这段里只有 2.8% 的行引用本期事实，其余都是「继续做好 X 相关工作」式空表态。
+   * 数据现成：aggregate() 已算好 mc（各模块本期次数）/ least（最少用的 3 个）/ top（最多的）。
+   * ⚠️ 真值约束是硬约束：zero 只用于 mc===0、count/most 只用于 mc>=1，兜底绝不放宽。
+   * 占位符：{m} 模块名 · {unit} 周|月 · {c} 本期次数。 */
+  var aggPlanZero = [
+    '{m}本{unit}一次没轮到，下{unit}把它排进去。',
+    '{m}这{unit}没顾上，下{unit}补起来。',
+    '{m}本{unit}一直没排上，下{unit}优先安排。',
+    '{m}这{unit}完全没碰到，下{unit}得匀出时间。',
+    '{m}本{unit}漏掉了，下{unit}补回来。',
+    '{m}这{unit}没安排上，下{unit}找机会补。',
+    '{m}本{unit}一点没推进，下{unit}从基础做起。',
+    '{m}这{unit}没排进去，下{unit}提前占位。',
+    '{m}本{unit}没轮上，下{unit}放在前面做。',
+    '{m}这{unit}没动，下{unit}按流程先过一遍。',
+    '{m}本{unit}空着，下{unit}填上。',
+    '{m}这{unit}没涉及，下{unit}主动争取。',
+    '{m}本{unit}没排到，下{unit}先安排一轮。',
+    '{m}这{unit}没顾上碰，下{unit}补个完整流程。',
+    '{m}本{unit}没接触，下{unit}先熟悉一下。',
+    '{m}这{unit}没轮着，下{unit}跟着做一遍。',
+    '{m}本{unit}没排进去，下{unit}抽时间补。',
+    '{m}这{unit}没做到，下{unit}纳入计划。',
+  ];
+  var aggPlanCount = [
+    '{m}本{unit}只做了{c}次，下{unit}多留点时间。',
+    '{m}这{unit}一共{c}次，下{unit}试着多排一些。',
+    '{m}本{unit}{c}次，次数偏少，下{unit}补上。',
+    '{m}这{unit}排了{c}次，下{unit}争取多过几遍。',
+    '{m}本{unit}只轮到{c}次，下{unit}优先安排。',
+    '{m}这{unit}{c}次，明显偏少，下{unit}多练。',
+    '{m}本{unit}做了{c}次，下{unit}把不熟的再过一遍。',
+    '{m}这{unit}{c}次，下{unit}提到日常频率。',
+    '{m}本{unit}只有{c}次机会，下{unit}抓得更紧些。',
+    '{m}这{unit}{c}次，下{unit}多安排几次。',
+    '{m}本{unit}接触{c}次，还不算熟，下{unit}继续。',
+    '{m}这{unit}处理了{c}次，下{unit}把流程固定下来。',
+    '{m}本{unit}只有{c}次，下{unit}早点上手。',
+    '{m}这{unit}{c}次，量不够，下{unit}多匀时间。',
+    '{m}本{unit}{c}次，下{unit}按计划往上加。',
+    '{m}这{unit}碰了{c}次，下{unit}再练几轮。',
+    '{m}本{unit}{c}次，下{unit}争取翻一倍。',
+    '{m}这{unit}{c}次，下{unit}固定下来做。',
+    '{m}本{unit}才{c}次，下{unit}提高频次。',
+    '{m}这{unit}{c}次，下{unit}把用时压一压。',
+    '{m}本{unit}{c}次，下{unit}多跟着做几遍。',
+    '{m}这{unit}{c}次，下{unit}重点补熟练度。',
+  ];
+  var aggPlanMost = [
+    '{m}本{unit}做了{c}次，占了大头，下{unit}保持这个节奏。',
+    '{m}这{unit}做了{c}次，是最多的，下{unit}接着按这个来。',
+    '{m}本{unit}{c}次，是这{unit}的主力，下{unit}继续保持。',
+    '{m}这{unit}{c}次，上手最熟，下{unit}可以多担一点。',
+    '{m}本{unit}投入最多的就是{c}次，下{unit}把标准再提一提。',
+    '{m}这{unit}做了{c}次，最顺，下{unit}试试提高效率。',
+    '{m}本{unit}{c}次，处理得最多，下{unit}把做法整理出来。',
+    '{m}这{unit}{c}次，是重点，下{unit}保持质量。',
+    '{m}本{unit}{c}次，下{unit}重点放在细节上。',
+    '{m}这{unit}{c}次，占时间最多，下{unit}看看能不能提速。',
+    '{m}本{unit}{c}次，最熟练，下{unit}保持不动。',
+    '{m}这{unit}{c}次，扛了主要工作量，下{unit}继续稳住。',
+    '{m}本{unit}{c}次，表现最好，下{unit}把经验记下来。',
+    '{m}这{unit}{c}次，做得最多，下{unit}试着独立完成。',
+  ];
+
   window.Phrases = {
     jobTypes: jobTypes,
     jobLex: jobLex,
@@ -1307,6 +1373,9 @@
     solutions: solutions,
     noProblem: noProblem,
     plans: plans,
+    aggPlanZero: aggPlanZero,
+    aggPlanCount: aggPlanCount,
+    aggPlanMost: aggPlanMost,
     plansActivity: plansActivity,
     planTail: planTail,
     fillers: fillers,

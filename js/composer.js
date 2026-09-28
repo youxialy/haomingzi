@@ -540,18 +540,46 @@
     }
 
     // ---- 四、下周期工作计划 ----
+    /* 挂靠**本期事实**（2026-09-28）。原先这里是 `pickN(rng, PLAN_PATS, ...)` 纯随机取句，
+     * 实测 12 期周报里只有 **2.8%** 的行引用本期事实，读着就是套话。
+     * 现在按模块的本期次数 `mc` 分流：
+     *   mc === 0 → aggPlanZero（本期一次没轮到，下期补）
+     *   mc >= 1  → aggPlanCount（本期只做了 {c} 次）
+     *   本期做得最多的那个 → aggPlanMost（继续保持）
+     * ⚠️ 真值约束是硬约束：zero 只用于 0 次、count/most 只用于 >=1 次，**兜底绝不放宽** ——
+     *    否则会说出「本{unit}做了 0 次」这种假事实（日报修 2 踩过同一个坑）。
+     * 同段内不复用同一条模板（见下面的 pickPlanTpl），但**允许同类锚点连着出现**。 */
     L.push('');
     L.push(secPrefix(sk.secStyle, 3) + '下' + unit + '工作计划');
     var all = (config && config.modules) ? config.modules.slice() : top.map(function (t) { return t[0]; });
-    var least = all.sort(function (a, b) { return (mc[a] || 0) - (mc[b] || 0); }).slice(0, 3);
-    var planPool = pickN(rng, PLAN_PATS, PLAN_PATS.length);
-    var planOff = Math.floor(rng() * planPool.length);
-    var planLines = least.map(function (m, i) {
-      var body = tf(planPool[(i * 2 + planOff) % planPool.length], { m: m, unit: unit });
+    var least = all.slice().sort(function (a, b) { return (mc[a] || 0) - (mc[b] || 0); }).slice(0, 2);
+    var mostMod = top.length ? top[0][0] : null;
+    var planTargets = least.slice();
+    if (mostMod && planTargets.indexOf(mostMod) < 0) planTargets.push(mostMod);
+    var AP = (typeof Phrases !== 'undefined') ? Phrases : {};
+    /* 同段内不复用同一条模板（撞了就重抽，最多 4 次）。
+     * ⚠️ 这里**不做"锚点种类不重复"** —— 试过，结果每期只剩 1 条有事实、另 1 条退回空表态兜底
+     * （实测有事实挂靠率只有 55.6%）。同类锚点连着出现其实很自然：
+     * 「A 本周 2 次」「B 本周 3 次」读起来正常，只要句式不同、数字和模块不同就行。 */
+    var usedPlanTpl = {};
+    function pickPlanTpl(pool) {
+      for (var k = 0; k < 4; k++) {
+        var cand = choice(rng, pool);
+        if (!usedPlanTpl[cand]) { usedPlanTpl[cand] = 1; return cand; }
+      }
+      return null;
+    }
+    var planLines = planTargets.map(function (m, i) {
+      var c = mc[m] || 0;
+      var isMost = (m === mostMod) && (i === planTargets.length - 1);
+      var kind = (isMost && c > 0) ? 'most' : (c === 0 ? 'zero' : 'count');
+      var pool = { zero: AP.aggPlanZero, count: AP.aggPlanCount, most: AP.aggPlanMost }[kind] || PLAN_PATS;
+      var tpl = pickPlanTpl(pool) || pickPlanTpl(PLAN_PATS) || choice(rng, PLAN_PATS);
+      var body = tf(tpl, { m: m, unit: unit, c: c });
       return sk.joined ? body.replace(/。$/, '') : (itemPrefix(sk, i) + body);
     });
     var closer = tf(choice(rng, PLAN_CLOSERS), { unit: unit });
-    planLines.push(sk.joined ? closer.replace(/。$/, '') : (itemPrefix(sk, least.length) + closer));
+    planLines.push(sk.joined ? closer.replace(/。$/, '') : (itemPrefix(sk, planTargets.length) + closer));
     L.push(sk.joined ? (planLines.join('；') + '。') : planLines.join('\n'));
 
     if (sk.closer) L.push(tf(sk.closer, { unit: unit }));

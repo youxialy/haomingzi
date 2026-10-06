@@ -52,17 +52,32 @@
     return cloud;
   }
 
+  var MODEL_KEY = 'aiPolishModelId';
+
+  function cachedModel() {
+    try { return localStorage.getItem(MODEL_KEY) || null; } catch (e) { return null; }
+  }
+  function saveModel(id) {
+    try { localStorage.setItem(MODEL_KEY, id); } catch (e) { /* 隐私模式等场景静默降级 */ }
+  }
+  function clearModel() {
+    modelId = null;
+    try { localStorage.removeItem(MODEL_KEY); } catch (e) { /* 同上 */ }
+  }
+
   async function ensureModel() {
     if (modelId) return modelId;
+    var cached = cachedModel();
+    if (cached) { modelId = cached; return modelId; }   // 跨会话缓存：省掉 models.list 往返
     var models = await initCloud().llm.models.list();
     if (!models || !models.length) throw new Error('当前没有可用模型');
     var m = models.filter(function (x) { return x.disabled !== true; })[0] || models[0];
     modelId = m.id;
+    saveModel(modelId);
     return modelId;
   }
 
-  async function polish(text) {
-    await loadSdk();
+  async function chatOnce(text) {
     var model = await ensureModel();
     var out = '';
     for await (var chunk of cloud.llm.chat.completions.create({
@@ -77,6 +92,18 @@
       if (d && d.content) out += d.content;
     }
     return out.trim();
+  }
+
+  async function polish(text) {
+    await loadSdk();
+    var fromCache = !modelId && !!cachedModel();
+    try {
+      return await chatOnce(text);
+    } catch (e) {
+      // 缓存的模型 id 可能已下线：清缓存重试一次（只在用了缓存时触发，正常路径不加延迟）
+      if (fromCache) { clearModel(); return chatOnce(text); }
+      throw e;
+    }
   }
 
   function errMsg(e) {
@@ -101,16 +128,21 @@
       if (!sel.trim()) { App.toast('先选中要润色的那一段文字'); return; }
       busy = true;
       btn.disabled = true;
-      btn.textContent = '✨ 润色中…';
+      var t0 = Date.now();
+      btn.textContent = '✨ 润色中…0s';
+      var tick = setInterval(function () {
+        btn.textContent = '✨ 润色中…' + Math.round((Date.now() - t0) / 1000) + 's';
+      }, 500);
       polish(sel).then(function (out) {
         if (!out) { App.toast('没润色出结果，再试一次', 'error'); return; }
         ta.value = ta.value.substring(0, start) + out + ta.value.substring(end);
         ta.selectionStart = ta.selectionEnd = start + out.length;
         Editor.contentChanged();   // 标记为手动修改，避免被「生成」静默覆盖
-        App.toast('已润色，检查一下再保存');
+        App.toast('已润色（用时 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's），检查一下再保存');
       }).catch(function (e) {
         App.toast(errMsg(e), 'error');
       }).finally(function () {
+        clearInterval(tick);
         busy = false;
         btn.disabled = false;
         btn.textContent = '✨ AI 润色';

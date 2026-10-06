@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026092801">
+<link rel="stylesheet" href="css/style.css?v=2026100601">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -100,6 +100,7 @@
         <button class="btn" id="variantBtn" title="对同一日期换一批不同的句式组合">🔄 换一版</button>
         <button class="btn" id="saveBtn">💾 保存</button>
         <button class="btn" id="copyBtn">📋 复制</button>
+        <button class="btn" id="polishBtn" title="选中正文里的一段，再点这里让 AI 改得更口语">✨ AI 润色</button>
         <button class="btn ghost" id="markBtn">✅ 标记已提交</button>
       </div>
       <p class="hint">生成内容基于你配置的真实工作模块自动成文；复制后粘贴到学习通日报提交框即可。手动改过的内容重新生成前会先确认，不会被静默覆盖；没点保存的修改会自动暂存，切日期、关页面都不会丢。</p>
@@ -369,12 +370,13 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026092801"></script>
-<script defer src="js/phrases.js?v=2026092801"></script>
-<script defer src="js/generator.js?v=2026092801"></script>
-<script defer src="js/composer.js?v=2026092801"></script>
-<script defer src="js/editor.js?v=2026092801"></script>
-<script defer src="js/calendar.js?v=2026092801"></script>
-<script defer src="js/app.js?v=2026092801"></script>
+<script defer src="js/store.js?v=2026100601"></script>
+<script defer src="js/phrases.js?v=2026100601"></script>
+<script defer src="js/generator.js?v=2026100601"></script>
+<script defer src="js/composer.js?v=2026100601"></script>
+<script defer src="js/editor.js?v=2026100601"></script>
+<script defer src="js/calendar.js?v=2026100601"></script>
+<script defer src="js/app.js?v=2026100601"></script>
+<script defer src="js/ai.js?v=2026100601"></script>
 </body>
 </html>

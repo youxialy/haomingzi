@@ -570,6 +570,8 @@
     /* 本篇的模块使用预算：每个模块名被用到就 +1，之后所有选模块的地方都优先挑用得少的，
      * 避免同一模块名在一篇里被反复写（见 pickLite 的说明）。 */
     var used = {};
+    var doneMods = {};   // 「今日完成」主栏目已出现过的模块，补充记录不再复用 → 杜绝同栏模块名重复
+    var jobMods = (Phrases.jobTypes[config.jobType] && Phrases.jobTypes[config.jobType].modules) || mods;
     mods.forEach(function (m) { tally(used, m); });
 
     // 明日计划模块：全局最不常用的优先，同时受本篇预算约束
@@ -763,6 +765,7 @@
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
           vars.n = dailyN(rng, config);
           modToday[m] = vars.n;   // 供「明日计划」用同一批数字，跨栏目保持一致
+          doneMods[m] = 1;
           /* 事务型模块按「数量表达」档选池：count = done（带件数）；默认 = donePlain（不报数） */
           var pk = takeFresh(rng, isActivity
             ? Phrases.doneActivity
@@ -899,9 +902,23 @@
        * 800 字档 ≥0.5 篇对 16.7%（>15%）、周报掩名相似度 0.562（>0.55）。
        * 原因和第一步的弯路同源：候选池一大，不同天的模块组合就趋同。
        * 800 字档篇均补 7.2 条、全池只有 7 个模块，重复是数学必然 —— 留待"扩模块池"解决。 */
-      var freshMods = mods.filter(function (m) { return !noteMods[m]; });
-      if (!freshMods.length) { noteMods = {}; freshMods = mods.slice(); }   // 一轮用完，开新一轮
-      var nm = pickCapped(rng, freshMods, used, 3) || freshMods[0] || mods[0] || '';
+      // 补充记录的模块：从「岗位全部模块 − 今日完成已用的 − 本轮已用的」里挑。
+      // 这样「今日完成」同栏绝不重复模块名，又能继续凑字数、把模板摊薄（避免跨篇趋同）；
+      // 且不会引入「明日计划」未覆盖的模块，不破坏「今日完成只列已做模块」的自洽。
+      var freshMods = jobMods.filter(function (m) { return !doneMods[m] && !noteMods[m]; });
+      if (!freshMods.length) {
+        // 当天不重复模块名已用尽（800 字档一篇要补 7+ 条，可用不重复模块约 5 个）
+        // → 改用「不带模块名的收尾句」补足字数：不算模块名重复，也不参与模块维度收敛，
+        //    跨天相似度保持低位（与旧逻辑 fillers 兜底同理）。
+        var free = takeFresh(rng, Phrases.noteFree, '', {}, hist);
+        if (!free.line) break;   // 连收尾句池也用尽 → 停止，不强行复用模块
+        usedTpls.push(free.tpl);
+        noteLines.push(free.line);
+        need -= charCount(free.line);
+        guard++;
+        continue;
+      }
+      var nm = pickCapped(rng, freshMods, used, 3);
       noteMods[nm] = 1;
       var nv = { module: nm, weekday: weekday, dayN: dayN };
       var parts = [];

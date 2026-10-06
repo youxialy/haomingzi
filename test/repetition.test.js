@@ -834,13 +834,18 @@ section('M14 补充记录的开场雷同（同篇内）');
     notes.forEach(function (line) {
       var body = line.replace(ITEM, '').trim();
       var mod = '', after = '';
-      var sorted = (rec.modules || []).slice().sort(function (a, b) { return b.length - a.length; });
+      // ⚠️ 度量口径修正：补充记录的模块来自「岗位全部模块」(jobMods) 而非仅 4 个被选中模块，
+      // 必须拿全部岗位模块来匹配，否则未选中的模块匹配不到会落为 '-' 而误报「模块名重复 100%」。
+      // 注意：report 对象不携带 jobType，岗位名要从 corpus 的 config 取，不能用 rec.jobType（undefined）。
+      var allMods = (Phrases.jobTypes[c14.config.jobType] && Phrases.jobTypes[c14.config.jobType].modules) || (rec.modules || []);
+      var sorted = allMods.slice().sort(function (a, b) { return b.length - a.length; });
       for (var k = 0; k < sorted.length; k++) {
         var idx = body.indexOf(sorted[k]);
         if (idx >= 0) { mod = sorted[k]; after = body.slice(idx + sorted[k].length, idx + sorted[k].length + 2); break; }
       }
-      mods.push(mod || '-');
-      shapes.push(mod ? after : body.slice(0, 2));
+      if (!mod) return;   // 不带模块名的收尾句（noteFree）不参与模块名/开场形态重复统计
+      mods.push(mod);
+      shapes.push(after);
     });
     var seenM = {}, seenS = {}, dm = false, dsx = false;
     mods.forEach(function (m) { if (seenM[m]) dm = true; seenM[m] = 1; });

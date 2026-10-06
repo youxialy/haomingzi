@@ -328,7 +328,7 @@
    * 构造本次生成的「上下文」：台账 + 近 7 天正文句子 + 本篇已用集合。
    * age(tpl) 返回距上次使用的天数（从未用过返回 AGE_NEVER）。
    */
-  function makeHist(dateStr, reports, ledger) {
+  function makeHist(dateStr, reports, ledger, banTpls) {
     var msCache = {};
     function msOf(d) {
       if (msCache[d] === undefined) msCache[d] = dayMs(d);
@@ -360,10 +360,20 @@
     }
     // 句子级比对的对象太多会拖慢生成，只保留最近的 140 句
     if (lines.length > 140) lines = lines.slice(lines.length - 140);
+    // 「换一版」时累积禁用同天所有历史版本的模板：让每一版都尽量用没出现过的句式，
+    // 否则同天多次换一版会在用过一批模板后快速趋同（实测两两相似度可达 51~69%）。
+    var banned = {};
+    if (banTpls) {
+      for (var bi = 0; bi < banTpls.length; bi++) {
+        var bk = String(banTpls[bi]);
+        if (bk) banned[bk] = 1;
+      }
+    }
     return {
       date: dateStr,
       today: todayUsed,
       lines: lines,
+      banned: banned,
       todaySkeleton: todaySkeleton,
       age: function (t) {
         var l = ledger.tpl[t];
@@ -378,12 +388,14 @@
     };
   }
 
-  /* 从池子里筛出候选：先排「本篇已用 / 模块首词撞车」，再按硬窗口分级 */
+  /* 从池子里筛出候选：先排「本篇已用 / 禁用集 / 模块首词撞车」，再按硬窗口分级 */
   function candidatePool(arr, mod, hist) {
     var head = (mod || '').slice(0, 2);
     function noClash(t) { return !head || t.slice(0, 2) !== head; }
-    var base = arr.filter(function (t) { return !hist.today[t] && noClash(t); });
-    if (!base.length) base = arr.filter(noClash);
+    function notBanned(t) { return !hist.banned || !hist.banned[t]; }
+    var base = arr.filter(function (t) { return !hist.today[t] && notBanned(t) && noClash(t); });
+    if (!base.length) base = arr.filter(function (t) { return notBanned(t) && noClash(t); });
+    if (!base.length) base = arr.filter(notBanned);
     if (!base.length) base = arr.slice();
     for (var i = 0; i < TIERS.length; i++) {
       var e = base.filter(function (t) { return hist.age(t) >= TIERS[i]; });
@@ -548,7 +560,7 @@
   }
 
   /* ---------- 组装单日日报 ---------- */
-  function buildDaily(dateStr, config, reports, stats, salt, extra, ledger) {
+  function buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules) {
     /* 种子 = 日期 + 盐 + 配置指纹 + 本机标识。
      * 加本机标识（Store.data.settings.deviceId）是为了解决：两个人配置**完全相同**
      * （公司名/岗位名留空、勾选模块一致）时，同一天会产出逐字相同的日报。
@@ -564,6 +576,9 @@
 
     var prevDates = lastNDates(reports, dateStr, 1);
     var yesterdayMods = prevDates.length ? (reports[prevDates[0]].modules || []) : [];
+    // 「换一版」时把同天历史版本的模块也并入「昨天用过」集合 → 主模块尽量换一批，
+    // 让每版的模块取舍/阅读顺序都和上一版不同（800 字档仍需覆盖多数模块，但主模块能轮换）。
+    if (banModules && banModules.length) yesterdayMods = yesterdayMods.concat(banModules);
 
     var mods = pickModules(config.modules, stats, yesterdayMods, rng);
 
@@ -583,7 +598,7 @@
     var planB = pickCapped(rng, planHead, used, 3, config.modules);
     var planMods = (planB && planB !== planA) ? [planA, planB] : [planA];
 
-    var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr));
+    var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr), banTpls);
     // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
     hist.lexWords = (Phrases.jobLex && Phrases.jobLex[config.jobType]) || [];
     var sk = pickSkeleton(rng, hist, config.layout);
@@ -1008,12 +1023,14 @@
     if (!config || !config.modules || !config.modules.length) return null;
     var base = (opts && opts.saltBase) || 0;
     var ledger = makeLedger(reports, dateStr);   // 全周期台账每次生成只建一次
+    var banTpls = (opts && opts.banTpls) || null;  // 「换一版」累积禁用同天所有历史版本的模板
+    var banModules = (opts && opts.banModules) || null;  // 「换一版」累积禁用同天所有历史版本的模块
     var prev = lastNDates(reports, dateStr, COMPARE_DAYS).map(function (d) { return reports[d].text || ''; });
     if (reports[dateStr] && reports[dateStr].text) prev = prev.concat([reports[dateStr].text]);
     var prevPrep = prev.map(prepBigrams);
     var best = null, bestScore = Infinity;
     for (var salt = base; salt < base + 10; salt++) {
-      var r = buildDaily(dateStr, config, reports, stats, salt, extra, ledger);
+      var r = buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules);
       var mine = prepBigrams(r.text), mx = 0;
       for (var i = 0; i < prevPrep.length; i++) {
         var s = simPrepped(mine, prevPrep[i]);

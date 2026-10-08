@@ -281,6 +281,10 @@ textarea { resize: vertical; line-height: 1.8; }
 
 /* ---------- 页脚 / Toast ---------- */
 .footer { max-width: 960px; margin: 28px auto 0; padding: 0 16px; text-align: center; font-size: 13px; color: var(--text-soft); }
+/* 页脚版本号：比正文提示更轻一档（它是排查问题用的次要信息，不该抢眼）。
+ * 值由 tools/bump-version.js 写进 <footer data-app-version>，app.js 搬到这里显示。 */
+.hint.ver { font-size: 11.5px; opacity: .6; letter-spacing: .3px; margin-top: 6px; }
+.hint.ver span { font-variant-numeric: tabular-nums; }   /* 数字等宽，版本号换版时不会跳宽 */
 #toast {
   position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
   background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 10px;

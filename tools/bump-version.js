@@ -14,11 +14,13 @@
  *
  * 覆盖范围：
  *   · index.html  —— css + 7 个 js 的 ?v=（8 处）
+ *   · index.html  —— 页脚 data-app-version（1 处，页面右下角显示的版本号）
  *   · guide.html  —— css 的 ?v=（1 处）
  *   · sw.js       —— var VERSION = '...'（1 处）
  *     （sw.js 的缓存清单用 './js/x.js?v=' + VERSION 拼接，自动跟随，不是独立一处）
  *
- * 为什么需要它：手工改 10 处极易漏，漏一处老用户就拿不到新代码。
+ * 为什么需要它：手工改 11 处极易漏，漏一处老用户就拿不到新代码、
+ * 或者页脚显示的版本号与实际代码对不上（排查问题时会误导）。
  * ============================================================ */
 'use strict';
 
@@ -35,6 +37,10 @@ var V_FIND = /\?v=([\w.-]+)/;                  // 取当前值：不带 g，需�
 var V_ALL = /\?v=[\w.-]+/g;                    // 计数 / 替换：带 g
 var SW_FIND = /var VERSION = '([^']+)'/;       // 取 sw.js 当前值
 var SW_REPL = /(var VERSION = ')[^']+(';)/;    // 替换 sw.js
+// index.html 页脚：<footer class="footer" data-app-version="...">（页面右下角显示用）
+var FOOT_FIND = /data-app-version="([^"]*)"/;
+var FOOT_REPL = /(data-app-version=")[^"]*(")/;
+var EXPECTED = 11;                             // 10 处 ?v= / VERSION + 1 处页脚版本号
 
 function todayTag() {
   var d = new Date();
@@ -58,14 +64,14 @@ if (!V_RE.test(next)) {
   process.exit(1);
 }
 
-// 读取现状（顺便检查三处是否一致）
+// 读取现状（顺便检查各处是否一致）
 var seen = {}, srcs = {}, total = 0;
 FILES.forEach(function (f) {
   var s = readIfExists(f);
   srcs[f] = s;
-  var hit = (s.match(V_ALL) || []).length + (SW_FIND.test(s) ? 1 : 0);
+  var hit = (s.match(V_ALL) || []).length + (SW_FIND.test(s) ? 1 : 0) + (FOOT_FIND.test(s) ? 1 : 0);
   total += hit;
-  var m = s.match(V_FIND) || s.match(SW_FIND);
+  var m = s.match(V_FIND) || s.match(SW_FIND) || s.match(FOOT_FIND);
   if (m) seen[m[1]] = (seen[m[1]] || 0) + 1;
 });
 var olds = Object.keys(seen);
@@ -73,8 +79,8 @@ var olds = Object.keys(seen);
 console.log('仓库：' + ROOT);
 console.log('当前版本号：' + (olds.length ? olds.join(' / ') : '(未找到)'));
 console.log('需修改处数：' + total + ' 处');
-if (olds.length !== 1 || total !== 10) {
-  console.log('⚠️  与预期的「单一版本号 / 共 10 处」不符，请核对（仍会按匹配结果替换）');
+if (olds.length !== 1 || total !== EXPECTED) {
+  console.log('⚠️  与预期的「单一版本号 / 共 ' + EXPECTED + ' 处」不符，请核对（仍会按匹配结果替换）');
 }
 console.log('目标版本号：' + next + (explicit ? '' : '（按当天日期自动生成）') + (dry ? '   [dry-run]' : ''));
 console.log('');
@@ -82,13 +88,14 @@ console.log('');
 var changed = 0;
 FILES.forEach(function (f) {
   var s = srcs[f];
-  var hits = (s.match(V_ALL) || []).length + (SW_FIND.test(s) ? 1 : 0);
-  var out = s.replace(V_ALL, '?v=' + next).replace(SW_REPL, '$1' + next + '$2');
+  var hits = (s.match(V_ALL) || []).length + (SW_FIND.test(s) ? 1 : 0) + (FOOT_FIND.test(s) ? 1 : 0);
+  var out = s.replace(V_ALL, '?v=' + next)
+             .replace(SW_REPL, '$1' + next + '$2')
+             .replace(FOOT_REPL, '$1' + next + '$2');
   var did = out !== s;
   if (did) { changed++; if (!dry) fs.writeFileSync(path.join(ROOT, f), out, 'utf8'); }
   console.log('  ' + (did ? '改' : '·') + '  ' + f.padEnd(12) + hits + ' 处');
 });
 
 console.log('');
-console.log((dry ? '将修改 ' : '已修改 ') + total + ' 处 → ' + next + '（涉及 ' + changed + ' 个文件）');
-if (dry) console.log('去掉 --dry-run 即真正写入。');
+console.log((dry ? '将修改 ' : '已修改 ') + total + ' 处 → ' + next + '（涉及 ' + changed + ' 个文件）');if (dry) console.log('去掉 --dry-run 即真正写入。');

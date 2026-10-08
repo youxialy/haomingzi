@@ -694,11 +694,33 @@
   }
 
   /* ============================================================
+   * 页脚版本号
+   * 唯一来源：<footer class="footer" data-app-version="...">
+   * 由 tools/bump-version.js 自动改写（见该脚本的 FOOT_REPL）。
+   * 为什么要在页面上显示版本号：同学反馈问题时能直接报出「我用的是哪个版本」，
+   * 不用再靠猜「你刷新了没」。
+   * ============================================================ */
+  function renderVersion() {
+    var foot = document.querySelector('[data-app-version]');
+    var slot = $('appVersion');
+    if (!slot) return;
+    var v = foot ? String(foot.getAttribute('data-app-version') || '').trim() : '';
+    if (!v || v === '—') { slot.textContent = '未知'; return; }
+    slot.textContent = v;
+  }
+
+  /* ============================================================
    * 初始化
    * ============================================================ */
   function init() {
     applyTheme();
     $('themeBtn').addEventListener('click', toggleTheme);
+
+    // 页脚版本号：不依赖任何状态，放最前面。
+    // ⚠️ 别挪到 init 末尾 —— 后面有 maybeShowInstall() 这类会调 matchMedia /
+    //    其它浏览器 API 的分支，一旦抛错就会把 init 剩余部分整段带下水，
+    //    版本号这种「排查问题用」的信息恰恰最不该在出错时消失。
+    renderVersion();
 
     // 保存失败 / 配额将满：必须让用户看见，不能只写 console
     Store.onSaveError = function (info) {

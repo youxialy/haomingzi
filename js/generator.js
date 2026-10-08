@@ -155,16 +155,13 @@
   /* ============================================================
    * 版式骨架
    * ============================================================ */
-  var CN_NUM = ['一', '二', '三', '四', '五', '六', '七', '八'];
   var CIRCLE = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 
-  function secPrefix(style, i) {
-    var c = CN_NUM[i] || String(i + 1);
-    if (style === 'cnParen') return '（' + c + '）';
-    if (style === 'cnBracket') return '【' + c + '】';
-    if (style === 'cnClose') return c + '）';
-    return c + '、';
-  }
+  /* 学习通日报表单的两个字段名 —— 正文固定按这两栏成文，标题跨篇逐字相同。
+   * contentLines 也要把它们排除：否则第二栏标题（18 字）会进相似度比对集，白白抬高相似度。 */
+  var FORM_GAIN = '收获与感受';
+  var FORM_WORK = '主要工作、遇到的问题及如何解决的';
+
   function skeletonList() {
     return (Phrases && Phrases.skeletons && Phrases.skeletons.length) ? Phrases.skeletons : null;
   }
@@ -226,7 +223,11 @@
   // 从一篇报告正文里提取「内容句」（去掉抬头/栏目标题/条目符号）
   function contentLines(text) {
     return (text || '').split('\n').map(function (s) { return s.trim(); })
-      .filter(function (s) { return s.length >= 8 && !isHeaderLine(s) && !isSectionLine(s); })
+      .filter(function (s) {
+        // 两栏标题是固定字段名（跨篇逐字相同），不计入「内容句」/相似度比对集
+        if (s === FORM_GAIN || s === FORM_WORK) return false;
+        return s.length >= 8 && !isHeaderLine(s) && !isSectionLine(s);
+      })
       .map(stripItemMark);
   }
 
@@ -616,8 +617,6 @@
      * 正文直接按这两栏成文 —— 去掉【实习日报】抬头/日期/公司、开场白、栏目大序号与「明日计划」，
      * 生成后点两下复制即可分别粘进两个框，不必再手工拆分。
      * 排版变化保留在「条目编号」上（骨架 sk1~sk6 提供 1./1）/・/-/①/（1）），两栏标题固定为表单字段名。 */
-    var FORM_GAIN = '收获与感受';
-    var FORM_WORK = '主要工作、遇到的问题及如何解决的';
     var vars = { weekday: weekday, dayN: dayN, n: 0, module: pickCapped(rng, mods, used, 3, config.modules) };
 
     var sections = (config.sections && config.sections.length) ? config.sections : defaultSections();
@@ -880,7 +879,6 @@
     makeLedger: makeLedger,
     skeletonList: skeletonList,
     detectSkeleton: detectSkeleton,
-    secPrefix: secPrefix,
     itemPrefix: itemPrefix,
     BAD_PAIR: BAD_PAIR,
     badJoin: badJoin,

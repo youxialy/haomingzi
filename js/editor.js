@@ -14,6 +14,9 @@
   var lastGenerated = null;       // 最近一次生成结果（结构化字段随保存落库）
   var manualEdited = false;       // 用户是否手动改过当前编辑器内容（重新生成前据此确认）
   var swapBanned = {};            // 换一版时累积禁用「同天已出过的模板」，逼每版用不同句式
+  /* 累积禁用集的长度上限：防止长时间连点「换一版」把数组撑到无限大。
+   * 每版约 50 条模板，1600 ≈ 30 多版；到那时池子早已被 ban 光，丢最早的没有影响。 */
+  var BAN_TPL_MAX = 1600, BAN_MOD_MAX = 240;
   var snapshot = { date: null, text: '', extra: '' };  // 上一次写进编辑器的内容，用于识别未保存改动
   var draftTimer = null;          // 草稿落盘防抖
   var AGG_DRAFT_MAX = 12;         // 周月报草稿最多保留份数，防止 localStorage 无限增长
@@ -312,7 +315,11 @@
     var r = Generator.generateDaily(date, cfg, Store.data.reports, Store.data.moduleStats,
       $('extraInput').value.trim(), { saltBase: Math.floor(Math.random() * 90000) + 1, banTpls: banTpls, banModules: banModules });
     if (!r) { App.toast('生成失败，请检查配置'); return; }
-    swapBanned[date] = { tpls: swapBanned[date].tpls.concat(r.tpls || []), mods: swapBanned[date].mods.concat(r.modules || []) };
+    var banT = swapBanned[date].tpls.concat(r.tpls || []);
+    var banM = swapBanned[date].mods.concat(r.modules || []);
+    if (banT.length > BAN_TPL_MAX) banT = banT.slice(banT.length - BAN_TPL_MAX);
+    if (banM.length > BAN_MOD_MAX) banM = banM.slice(banM.length - BAN_MOD_MAX);
+    swapBanned[date] = { tpls: banT, mods: banM };
     finishGeneration(r, '已换一版并保存，可修改后复制提交');
   }
 

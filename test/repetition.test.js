@@ -60,6 +60,35 @@ function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; },
 function median(a) { if (!a.length) return 0; var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; }
 function pct(x) { return (x * 100).toFixed(1) + '%'; }
 
+/* 成品稿的「病句」判定（M7 / M10 共用）。
+ * ⚠️ 不能对整行直接跑 BAD_PAIR —— 模块名内部就可能含两个动词
+ * （「工位5S整理维护」「会员信息登记维护」「测试用例执行记录」），整行判定会把这类模块的
+ * 全部句式都误杀。只有**跨出模块边界**的命中才算病句；接缝病句（「按时进行参加晨会」）的
+ * 命中片段必然有一半在模块外，仍会被抓到。 */
+var ALL_MODS_BY_LEN = (function () {
+  var a = [];
+  Object.keys(Phrases.jobTypes).forEach(function (j) { a = a.concat(Phrases.jobTypes[j].modules); });
+  return a.sort(function (x, y) { return y.length - x.length; });
+})();
+function badHitsInText(text) {
+  var out = [], re = new RegExp(Generator.BAD_PAIR.source, 'g');
+  (text || '').split('\n').forEach(function (line) {
+    var m;
+    re.lastIndex = 0;
+    while ((m = re.exec(line))) {
+      var i = m.index, j = i + m[0].length, inMod = false;
+      for (var k = 0; k < ALL_MODS_BY_LEN.length && !inMod; k++) {
+        var mod = ALL_MODS_BY_LEN[k], p = -1;
+        while ((p = line.indexOf(mod, p + 1)) >= 0) {
+          if (i >= p && j <= p + mod.length) { inMod = true; break; }
+        }
+      }
+      if (!inMod) out.push(m[0]);
+    }
+  });
+  return out;
+}
+
 var HDR_RE = /^(【|实习日报|日报|实习周报|实习月报|\d{4}-\d{2}-\d{2}\s+星期)/;
 var NUM_RE = /^(【[一二三四五六七八九十]】|（[一二三四五六七八九十]）|[一二三四五六七八九十][、.）)]|\d+[、.]|\(?\d+\)|[①②③④⑤⑥⑦⑧⑨⑩])/;
 var MARK_RE = /^([・·•◆●○\-–—]|\d+[.、)）]|（\d+）|\(\d+\)|[①②③④⑤⑥⑦⑧⑨⑩])\s*/;
@@ -251,9 +280,9 @@ section('M4 空信息句（不含岗位实体与岗位语域词、换岗位也�
 section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
 (function () {
   var rate = {
-    openers: 1, openersMon: 0.6 / 7, openersFri: 0.6 / 7, done: 3, doneActivity: 1.5,
+    done: 3, doneActivity: 1.5,
     gains: 1, gainsTail: 0.6, problems: 0.65, solutions: 0.65, noProblem: 0.35,
-    plans: 2, plansActivity: 0.7, planTail: 0.5, fillers: 1,
+    fillers: 1,
     /* 「不写件数」档专用的备选池（settings.numStyle）。90 条 ÷ 日均 3 次 = 30 天 */
     donePlain: 3
   };
@@ -265,13 +294,12 @@ section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
   });
   ok(worst.cycle >= 20, '最小循环周期 ' + worst.cycle.toFixed(1) + ' 天（' + worst.name + '，' + worst.size + ' 条）≥ 20 天');
   // 模块绑定池必须 100% 含 {module}，否则换岗位就是同一句话
-  var bound = ['done', 'donePlain', 'doneActivity', 'gains', 'problems', 'solutions',
-    'plans', 'plansActivity'];
+  var bound = ['done', 'donePlain', 'doneActivity', 'gains', 'problems', 'solutions'];
   var noMod = [];
   bound.forEach(function (k) {
     (Phrases[k] || []).forEach(function (t) { if (t.indexOf('{module}') < 0) noMod.push(k + ':' + t.slice(0, 12)); });
   });
-  ok(noMod.length === 0, '模块绑定池（done/doneActivity/gains/problems/solutions/plans/plansActivity）100% 含 {module}',
+  ok(noMod.length === 0, '模块绑定池（done/donePlain/doneActivity/gains/problems/solutions）100% 含 {module}',
     noMod.length ? noMod.slice(0, 3).join(' / ') : '');
   ok((Phrases.skeletons || []).length >= 5, '版式骨架 ' + (Phrases.skeletons || []).length + ' 套 ≥ 5');
   ok((Composer.aggSkeletons || []).length >= 5, '聚合稿骨架 ' + (Composer.aggSkeletons || []).length + ' 套 ≥ 5');
@@ -321,8 +349,7 @@ section('M6 同栏目整段重复（同一栏目、整段逐字相同）');
 section('M7 模板病句（「按时进行参加晨会」这类通用动词 + 模块首词撞车）');
 (function () {
   var pools = ['done', 'doneActivity', 'gains', 'gainsTail', 'problems', 'solutions',
-    'noProblem', 'donePlain', 'plans', 'plansActivity', 'planTail', 'fillers',
-    'openers', 'openersMon', 'openersFri',
+    'noProblem', 'donePlain', 'fillers',
     /* 补漏：这三个池以前不在巡检范围内，「补充记录」的句式一直没被这条断言覆盖。
      * 补上后立刻查出一条旧规则的误报（见 badJoin 里对「首二字相同」的动词限定）。 */
     'noteLead', 'noteAct', 'noteEnd'];
@@ -343,31 +370,13 @@ section('M7 模板病句（「按时进行参加晨会」这类通用动词 + �
   });
   ok(hitsPool.length === 0, '句式池 × 全部岗位模块：病句组合 0 处',
     hitsPool.length ? hitsPool.slice(0, 3).join(' / ') : '共检查 ' + allMods.length + ' 个模块');
-  // 成品稿只能反向验证：命中片段若「完整落在某个模块名内部」，那是模块自带的动词
-  // （「工位5S整理维护」），不算病句；只有跨出模块边界的才算
-  // ——「按时进行参加晨会」这种接缝病句，片段必然有一半在模块外，仍会被抓到。
-  var modsByLen = allMods.slice().sort(function (a, b) { return b.length - a.length; });
-  function badInLine(line) {
-    var out = [], re = new RegExp(Generator.BAD_PAIR.source, 'g'), m;
-    while ((m = re.exec(line))) {
-      var i = m.index, j = i + m[0].length, inMod = false;
-      for (var k = 0; k < modsByLen.length && !inMod; k++) {
-        var mod = modsByLen[k], p = -1;
-        while ((p = line.indexOf(mod, p + 1)) >= 0) {
-          if (i >= p && j <= p + mod.length) { inMod = true; break; }
-        }
-      }
-      if (!inMod) out.push(m[0]);
-    }
-    return out;
-  }
+  // 成品稿只能反向验证：命中片段若「完整落在某个模块名内部」就是模块自带动词，不算病句
+  // —— 该判定已提为模块级 badHitsInText（M10 共用，口径统一）。
   var leaks = [];
   corpus.order.forEach(function (d) {
-    (corpus.reports[d].text || '').split('\n').forEach(function (line) {
-      badInLine(line).forEach(function (p) {
-        hitsRun++;
-        if (leaks.length < 3) leaks.push(p + '@' + line.slice(0, 24));
-      });
+    badHitsInText(corpus.reports[d].text).forEach(function (p) {
+      hitsRun++;
+      if (leaks.length < 3) leaks.push(p);
     });
   });
   ok(hitsRun === 0, DAYS + ' 篇实际输出中病句 0 处',
@@ -536,9 +545,8 @@ section('M10 字数下限参数矩阵（300 / 500 / 800 字）');
     var short = 0, bad = 0;
     c.order.forEach(function (d) {
       if (Generator.charCount(c.reports[d].text) < cs.mw) short++;
-      var t = c.reports[d].text;
-      var re = new RegExp(Generator.BAD_PAIR.source, 'g');
-      while ((re.exec(t))) bad++;
+      // 与 M7 同一口径：只有**跨出模块边界**的命中才算病句（整行跑 BAD_PAIR 会误杀模块名自带的相邻动词）
+      bad += badHitsInText(c.reports[d].text).length;
     });
     console.log('  · ' + cs.mw + ' 字：平均 ' + Math.round(mean(c.order.map(function (d) { return Generator.charCount(c.reports[d].text); }))) +
       ' 字，复用间隔中位 ' + rs.median + ' 天，6 天内复用 ' + rs.within6 + ' 次，≥0.5 篇对 ' + pct(or.rate));
@@ -696,9 +704,9 @@ section('M12 每天工作项条数与同篇模块重复');
  * M13 时态错位（「今日完成」栏目里冒出"明天打算…"）
  * 用户反馈：今日完成里出现「明天准备把今天没吃透的部分再补一补。」——
  * 明明是当天完成的事，却写成了对明天的预告。
- * 根源：noteEnd 池（补充记录的收束句，会挂进「今日完成」）里有 13 条以未来动作开头的
- * 句子，doneActivity 池另 1 条。已把 10 条改写成带 {module} 的形式挪到 planTail
- * （那里本就是「明日计划」，语义正对），另 2 条改成回顾表述。
+ * 根源：noteEnd 池（补充记录的收束句，会挂进「主要工作」）里有 13 条以未来动作开头的
+ * 句子，doneActivity 池另 1 条。这 14 条已全部改写为回顾表述（原先挪去 planTail 的那
+ * 10 条随「明日计划」栏目一并移除）。
  *
  * 判定口径：把句子按 ，。；、 切分子句，**任一子句以未来时间词开头** = 错位。
  * 「方便明天接着用」「没有留到明天」这类目的状语/否定式不算 —— 它们的主干动作是今天做的。
@@ -709,13 +717,21 @@ section('M12 每天工作项条数与同篇模块重复');
  * 会把正文条目误当标题、导致区块边界错乱（我因此误报过一次"还有残留"）。 */
 var SEC_RE = /^[（【]?\s*(一|二|三|四|五|1|2|3|4|5)\s*[、）】]/;
 var HEAD_WORDS_RE = /(今日完成|今日工作|完成情况|收获|学习|问题|解决|反思|计划|安排|明日|后续)/;
-function isSectionHead(t) { return SEC_RE.test(t) && HEAD_WORDS_RE.test(t) && !/[，。；]/.test(t); }
+/* 新格式（学习通两栏）的栏目标题是固定字段名，不带编号 —— 必须显式认出来，
+ * 否则 M13/M14 会找不到区块、静默变成「空测」（0 行 → 恒过）。 */
+var FIELD_GAIN = '收获与感受';
+var FIELD_WORK = '主要工作、遇到的问题及如何解决的';
+function isSectionHead(t) {
+  if (t === FIELD_GAIN || t === FIELD_WORK) return true;   // 两栏固定标题
+  return SEC_RE.test(t) && HEAD_WORDS_RE.test(t) && !/[，。；]/.test(t);
+}
+/* 取「主要工作」栏（= 旧的「今日完成」）的正文行；兼容旧的两栏以外的编号标题。 */
 function doneBlockOf(text) {
   var out = [], on = false;
   text.split('\n').forEach(function (l) {
     var t = l.trim();
     if (!t) return;
-    if (isSectionHead(t)) { on = /完成/.test(t); return; }
+    if (isSectionHead(t)) { on = (t === FIELD_WORK) || /完成/.test(t); return; }
     if (on) out.push(t);
   });
   return out;
@@ -723,7 +739,10 @@ function doneBlockOf(text) {
 
 section('M13 「今日完成」栏目的时态错位');
 (function () {
-  var DONE_POOLS = ['done', 'doneActivity', 'noteLead', 'noteAct', 'noteEnd'];
+  /* 这栏（「主要工作、遇到的问题及如何解决的」）现在由这些池喂 —— 两栏化后
+   * 问题与解决也进了这一栏，所以一并纳入「不得出现未来动作开头」的巡检。 */
+  var DONE_POOLS = ['done', 'doneActivity', 'noteLead', 'noteAct', 'noteEnd', 'noteFree',
+    'problems', 'solutions', 'noProblem'];
   var FUT_LEAD = /^(明天|明日|次日|下次|接下来|下一步|日后|后续)/;
   var OFF = /(^|[，。；])\s*(明天|明日|次日|下次|接下来|下一步|日后|后续)/;
   var CLAUSE = /[，。；、]/;
@@ -742,12 +761,7 @@ section('M13 「今日完成」栏目的时态错位');
   ok(off.length === 0, '这 ' + DONE_POOLS.length + ' 个池里没有「未来动作开头」的句子',
     off.slice(0, 3).join('  |  '));
 
-  // ② 搬走的句子确实落到了 planTail（否则就是删掉了，白丢内容）
-  ok((Phrases.planTail || []).length >= 35, 'planTail 承接搬迁句后仍有 ' + (Phrases.planTail || []).length + ' 条 ≥ 35');
-  ok((Phrases.planTail || []).every(function (t) { return t.indexOf('{module}') >= 0; }),
-    'planTail 每条都含 {module}（接在计划条目后面才读得通）');
-
-  // ③ 端到端：600 字档最容易触发补充记录，用它抽验成稿
+  // ② 端到端：600 字档最容易触发补充记录，用它抽验成稿
   var c13 = buildCorpus('newmedia', 45, 600);
   var total = 0, bad = 0, sample = '';
   c13.order.forEach(function (d) {
@@ -809,6 +823,9 @@ section('M14 补充记录的开场雷同（同篇内）');
         if (idx >= 0) { mod = sorted[k]; after = body.slice(idx + sorted[k].length, idx + sorted[k].length + 2); break; }
       }
       if (!mod) return;   // 不带模块名的收尾句（noteFree）不参与模块名/开场形态重复统计
+      /* 「问题与解决」按设计会复用「主要工作」的模块（问题就出在做过的活上），
+       * 而补充记录用的模块一定不含当天主模块 → 模块名落在这 4 个主模块里的行就是问题句，排除。 */
+      if ((rec.modules || []).indexOf(mod) >= 0) return;
       mods.push(mod);
       shapes.push(after);
     });

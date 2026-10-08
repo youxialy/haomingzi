@@ -115,23 +115,29 @@ for (var i3 = 1; i3 < texts.length; i3++) {
 check(maxSim < 0.6, '相邻两天相似度 < 0.60（最大 ' + maxSim.toFixed(3) + ' @ ' + maxPair + '）');
 
 // e. 特殊事项进入正文
-check(reports[days[3]].text.indexOf('消防安全演练') >= 0, '特殊事项已并入当日「今日完成」');
+check(reports[days[3]].text.indexOf('消防安全演练') >= 0, '特殊事项已并入当日「主要工作」栏');
 
 console.log('\n===== 测试 2：周报聚合（2026-09-07 ~ 09-13） =====');
 var weekly = Composer.aggregate('weekly', '2026-09-07', '2026-09-13', config, reports);
 check(!!weekly && weekly.count === 7, '7 篇日报全部聚合（count=' + (weekly && weekly.count) + '）');
-var wkHead = weekly.text.split('\n')[0];
-check(wkHead.indexOf('2026-09-07 ~ 2026-09-13') >= 0 && wkHead.indexOf('实习第1周') >= 0,
-  '周报抬头含起止日期与批次号（版式为 6 套轮换，不再固定前缀）', wkHead);
+// 两栏化后周报不再有抬头/下周期计划，改为校验两栏结构（与学习通表单字段一致）
+var wkLines = weekly.text.split('\n').filter(function (s) { return s.trim(); });
+check(wkLines[0] === '收获与感受', '周报首栏就是「收获与感受」', wkLines[0]);
+check(weekly.text.indexOf('主要工作、遇到的问题及如何解决的') > weekly.text.indexOf('收获与感受'),
+  '周报两栏顺序与学习通表单一致（收获在前）');
+check(weekly.text.indexOf('2026-09-07') < 0 || weekly.text.indexOf('实习第') < 0,
+  '周报正文不含抬头（起止日期/批次号已移除）');
 check(weekly.text.indexOf('消防安全演练') >= 0, '特殊事项进入周报「其他专项工作」');
-check(/下[周月]工作计划/.test(weekly.text), '包含下周期计划章节（章节编号随骨架变化）');
+check(wkLines.indexOf('下周期工作计划') < 0 && wkLines.indexOf('下月工作计划') < 0,
+  '周报不含下周期计划栏（两栏化时已移除）');
 
 console.log('\n===== 测试 3：月报聚合（2026-09-01 ~ 09-30） =====');
 var monthly = Composer.aggregate('monthly', '2026-09-01', '2026-09-30', config, reports);
 check(!!monthly && monthly.count === 14, '14 篇日报全部聚合（count=' + (monthly && monthly.count) + '）');
-var moHead = monthly.text.split('\n')[0];
-check(moHead.indexOf('2026-09-01 ~ 2026-09-30') >= 0 && moHead.indexOf('（2026-09）') >= 0,
-  '月报抬头含起止日期与月份', moHead);
+var moLines = monthly.text.split('\n').filter(function (s) { return s.trim(); });
+check(moLines[0] === '收获与感受', '月报首栏就是「收获与感受」', moLines[0]);
+check(monthly.text.indexOf('主要工作、遇到的问题及如何解决的') > monthly.text.indexOf('收获与感受'),
+  '月报两栏顺序与学习通表单一致（收获在前）');
 
 console.log('\n===== 测试 4：实习总结 =====');
 var summary = Composer.internshipSummary(config, reports);
@@ -160,7 +166,7 @@ for (var i4 = 0; i4 < 4; i4++) {
 }
 check(smallOk, '2 个模块时连续 4 天生成不崩溃');
 
-console.log('\n===== 测试 7：自定义栏目（改名 + 关闭） =====');
+console.log('\n===== 测试 7：栏目开关（两栏化后标题固定为表单字段名） =====');
 var cfg7 = JSON.parse(JSON.stringify(config));
 cfg7.sections = [
   { key: 'done', title: '今日工作内容', on: true },
@@ -169,19 +175,21 @@ cfg7.sections = [
   { key: 'plans', title: '明日安排', on: false }
 ];
 var r7 = Generator.buildDaily('2026-09-14', cfg7, {}, {}, 0, '');
-/* 章节编号样式由骨架决定（一、 / （一） / 【一】 / 一）），断言不该绑死某一种 ——
- * 真正要验的是「用户改的标题生效」+「编号顺序正确」（第一个栏目为 1、第二个为 2）。
- * 之前写死 '一、今日工作内容'，骨架一换位置就误报失败。 */
+/* 两栏化后正文固定两栏，标题必须是学习通表单的字段名（不能改、不带编号）。
+ * config.sections 的 title 不再影响输出 —— 这里验的是「标题锁定为表单字段名」。 */
 function secHeadOf(text, title) {
   var hit = '';
   text.split('\n').forEach(function (l) { if (!hit && l.indexOf(title) >= 0) hit = l.trim(); });
   return hit;
 }
-var head7a = secHeadOf(r7.text, '今日工作内容');
-var head7b = secHeadOf(r7.text, '问题与反思');
-check(/^[（【]?\s*(一|1)\s*[、）】]/.test(head7a), '自定义标题生效且编号为 1（' + head7a + '）');
-check(/^[（【]?\s*(二|2)\s*[、）】]/.test(head7b), '第二栏目为问题与反思且编号为 2（' + head7b + '）');
-check(r7.text.indexOf('收获与学习') < 0 && r7.text.indexOf('明日计划') < 0, '关闭的栏目不再出现');
+var head7a = secHeadOf(r7.text, '收获与感受');
+var head7b = secHeadOf(r7.text, '主要工作、遇到的问题及如何解决的');
+check(head7a === '收获与感受', '首栏标题锁定为表单字段名「收获与感受」（' + head7a + '）');
+check(head7b === '主要工作、遇到的问题及如何解决的', '次栏标题锁定为表单字段名「主要工作、遇到的问题及如何解决的」（' + head7b + '）');
+check(r7.text.indexOf('今日工作内容') < 0 && r7.text.indexOf('问题与反思') < 0,
+  'config.sections 里的自定义标题不再进入正文（两栏化后标题不可改）');
+check(r7.text.indexOf('收获与学习') < 0 && r7.text.indexOf('明日计划') < 0 && r7.text.indexOf('明日安排') < 0,
+  '关闭的栏目不再出现');
 // 关闭 problems 栏 → 问题字段为空 → 周报聚合走「平稳顺利」兜底
 var cfg7b = JSON.parse(JSON.stringify(config));
 cfg7b.sections = [
@@ -204,16 +212,26 @@ check(base8 && variant8 && base8.text !== variant8.text, '同一天不同盐值�
 check(Generator.charCount(variant8.text) >= 300, '换一版后字数仍达标');
 
 console.log('\n===== 测试 9：跨天句子防重复 =====');
-// 提取正文内容句（去抬头/栏目行/序号），检查同一句不会在 4 天内再次出现
+/* 正文内容句提取：排除抬头、两栏固定标题、编号行。
+ * ⚠️ 两栏化后标题是固定字符串（「收获与感受」/「主要工作、遇到的问题及如何解决的」），
+ *    必须显式排除 —— 否则第二栏标题（18 字）会被当成正文句子参与重复统计，恒报失败。 */
+var HARNESS_FIELDS = ['收获与感受', '主要工作、遇到的问题及如何解决的'];
+function isContentLine(raw) {
+  var s = raw.trim();
+  if (s.length < 8) return false;
+  if (s.charAt(0) === '【') return false;
+  if (HARNESS_FIELDS.indexOf(s) >= 0) return false;         // 两栏固定标题
+  if (/^[一二三四五六七八九十]、/.test(s)) return false;
+  return true;
+}
 var dayIdx = {};
 days.forEach(function (d, i) { dayIdx[d] = i; });
 var seen = {}; // 句子 -> 出现过的日期下标数组
 var worstDup = null;
 days.forEach(function (d) {
   reports[d].text.split('\n').forEach(function (raw) {
-    var s = raw.trim();
-    if (s.length < 8 || s.charAt(0) === '【' || /^[一二三四五六七八九十]、/.test(s)) return;
-    s = s.replace(/^\d+\.\s*/, '');
+    if (!isContentLine(raw)) return;
+    var s = raw.trim().replace(/^[\d（(]+[.、）)]\s*/, '');
     if (!seen[s]) seen[s] = [];
     seen[s].forEach(function (prev) {
       var gap = dayIdx[d] - prev;
@@ -231,9 +249,8 @@ var worstPair = null;
 days.forEach(function (d) {
   var ls = [];
   reports[d].text.split('\n').forEach(function (raw) {
-    var s = raw.trim();
-    if (s.length < 8 || s.charAt(0) === '【' || /^[一二三四五六七八九十]、/.test(s)) return;
-    ls.push(s.replace(/^\d+\.\s*/, ''));
+    if (!isContentLine(raw)) return;
+    ls.push(raw.trim().replace(/^[\d（(]+[.、）)]\s*/, ''));
   });
   for (var a = 0; a < ls.length; a++) {
     for (var b = a + 1; b < ls.length; b++) {
@@ -247,22 +264,28 @@ days.forEach(function (d) {
 check(!worstPair, '同一篇内不存在句式雷同的两句话' + (worstPair ? '——' + worstPair.d + ' 相似度 ' + worstPair.sim.toFixed(2) + '：「' + worstPair.a + '…」vs「' + worstPair.b + '…」' : ''));
 
 console.log('\n===== 测试 10：日均事务量（数字围绕基准波动） =====');
+/* ⚠️ 「件数」只在设置项 numStyle='count'（写具体件数）时才写进正文；默认档是「不写件数」。
+ *    这个测试原先没开档位，正文里一个数字都没有 → 样本恒为 0（空测）。这里显式打开。
+ *    ⚠️ 口径是**按模块**（每项工作约处理几件），不是全天总量，所以断言区间是 3~10。 */
+var prevNumStyle = ctx.Store.data.settings.numStyle;
+ctx.Store.data.settings.numStyle = 'count';
 var cfg10 = JSON.parse(JSON.stringify(config));
 cfg10.dailyLoad = 6;
 var nOk = true, nSamples = [];
 for (var i5 = 0; i5 < 10; i5++) {
   var ds10 = '2026-10-' + String(i5 + 1).padStart(2, '0');
   var rr = Generator.buildDaily(ds10, cfg10, {}, {}, i5, '');
-  // 提取「今日完成」栏目里的数字（去掉行首序号）
-  var sec = rr.text.split('一、')[1] ? rr.text.split('一、')[1].split('二、')[0] : '';
-  sec.split('\n').forEach(function (raw) {
-    var s = raw.trim().replace(/^\d+\.\s*/, '');
+  // 两栏化后「主要工作」栏的标题是表单字段名，用它切栏取事务量数字（去掉行首序号）
+  var s10 = rr.text.split('主要工作、遇到的问题及如何解决的')[1] || '';
+  s10.split('\n').forEach(function (raw) {
+    var s = raw.trim().replace(/^[\d（(]+[.、）)]\s*/, '');
     (s.match(/\d+/g) || []).forEach(function (x) {
       var v = parseInt(x, 10);
       if (v >= 2 && v <= 99) { nSamples.push(v); if (v < 3 || v > 10) nOk = false; }
     });
   });
 }
+ctx.Store.data.settings.numStyle = prevNumStyle;   // 还原，免得影响后续
 check(nOk && nSamples.length > 0, 'dailyLoad=6 时事务量全部在 3~10 内（样本 ' + nSamples.length + ' 个：' + nSamples.slice(0, 12).join(',') + '）');
 
 console.log('\n------------------------------------------');

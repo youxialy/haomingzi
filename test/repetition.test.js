@@ -1267,6 +1267,54 @@ section('M17 病句探测器灵敏度（接缝病句必须被抓住）');
 })();
 
 /* ============================================================
+ * M19 同一天反复「生成日报」必须稳定（不得两版横跳）
+ *
+ * 用户实测 bug：不停点「生成日报」，输出在**两版之间来回换**。
+ * 成因是两条反馈环（都已修）：
+ *   ① makeHist 把「当天已保存稿」的模板/骨架排除 → 每次生成排掉上一版、于是上上版又被放出来；
+ *   ② pickModules 依赖全局 moduleStats，而保存时 finishGeneration 会把当天的模块计入 → 计数每次都在变。
+ * 修法：普通生成走 opts.ignoreToday —— 台账 / 相似度比对 / 模块计数都忽略「当天自己」，
+ * 于是同一天反复生成得到逐字相同的同一版。「换一版」不走这条，靠 banTpls/banModules 累积禁用。
+ * ============================================================ */
+section('M19 同一天反复生成必须稳定（ignoreToday）');
+(function () {
+  var jt = Phrases.jobTypes['newmedia'];
+  var cfg = { jobType: 'newmedia', modules: jt.modules.slice(), startDate: '2026-09-07', endDate: '2026-12-31', minWords: 500, company: 'X', jobTitle: jt.name };
+  var reports = {}, stats = {}, base = new Date(2026, 8, 7), i, d, r;
+  for (i = 0; i < 3; i++) {
+    d = fmt(addDays(base, i));
+    r = Generator.generateDaily(d, cfg, reports, stats, '');
+    reports[d] = { date: d, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+    r.modules.forEach(function (m) { var s = stats[m] || { count: 0 }; s.count++; stats[m] = s; });
+  }
+  var ds = fmt(addDays(base, 10)), first = null, prevMods = null, stable = true;
+  for (i = 0; i < 8; i++) {
+    r = Generator.generateDaily(ds, cfg, reports, stats, '', { ignoreToday: true });
+    if (i === 0) first = r.text;
+    else if (r.text !== first) stable = false;
+    // 模拟 finishGeneration 的 moduleStats 记账（撤销上一版 → 记入本版）
+    if (prevMods) prevMods.forEach(function (m) { if (stats[m]) stats[m].count--; });
+    r.modules.forEach(function (m) { var s = stats[m] || { count: 0 }; s.count++; stats[m] = s; });
+    reports[ds] = { date: ds, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+    prevMods = r.modules;
+  }
+  ok(stable, '反复点「生成日报」8 次输出逐字不变（ignoreToday）');
+
+  var banned = [], bannedMods = [], seenT = {}, distinct = true;
+  for (i = 0; i < 5; i++) {
+    var cur = reports[ds].tpls || [], curM = reports[ds].modules || [];
+    r = Generator.generateDaily(ds, cfg, reports, stats, '', {
+      saltBase: (i + 1) * 7717, banTpls: banned.concat(cur), banModules: bannedMods.concat(curM)
+    });
+    if (seenT[r.text]) distinct = false;
+    seenT[r.text] = 1;
+    reports[ds] = { date: ds, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+    banned = banned.concat(r.tpls || []); bannedMods = bannedMods.concat(r.modules || []);
+  }
+  ok(distinct, '「换一版」5 次都产出不同版本（累积禁用，未横跳）');
+})();
+
+/* ============================================================
  * 收尾
  * ============================================================ */
 console.log('\n================================');

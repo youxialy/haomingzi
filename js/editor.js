@@ -289,7 +289,10 @@
     if (!cfg) return;
     if (manualEdited && !confirm('当前内容有手动修改，重新生成会覆盖它。确定继续？')) return;
     swapBanned[state.date] = { tpls: [], mods: [] };   // 全新生成：清空该天的换一版累积禁用集
-    var r = Generator.generateDaily(state.date, cfg, Store.data.reports, Store.data.moduleStats, $('extraInput').value.trim());
+    /* ignoreToday：普通生成**忽略当天已保存稿** → 同一天反复点得到逐字相同的同一版（可复现）。
+     * 不加这个，每次生成都会规避"上一版"、把"上上版"放出来，两版来回横跳（用户实测的 bug）。 */
+    var r = Generator.generateDaily(state.date, cfg, Store.data.reports, Store.data.moduleStats,
+      $('extraInput').value.trim(), { ignoreToday: true });
     if (!r) { App.toast('生成失败，请检查配置'); return; }
     finishGeneration(r, '已生成并保存，可修改后复制提交');
   }

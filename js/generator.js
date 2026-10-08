@@ -323,7 +323,7 @@
    * 构造本次生成的「上下文」：台账 + 近 7 天正文句子 + 本篇已用集合。
    * age(tpl) 返回距上次使用的天数（从未用过返回 AGE_NEVER）。
    */
-  function makeHist(dateStr, reports, ledger, banTpls) {
+  function makeHist(dateStr, reports, ledger, banTpls, ignoreToday) {
     var msCache = {};
     function msOf(d) {
       if (msCache[d] === undefined) msCache[d] = dayMs(d);
@@ -337,7 +337,10 @@
     }
     var todayUsed = {};
     var todaySkeleton = null;
-    var today = reports[dateStr];
+    /* ⚠️ ignoreToday：普通「生成日报」必须**忽略当天已保存稿**，否则会 2 循环横跳 ——
+     * 每次生成都排掉"上一版"的模板与骨架，于是"上上版"又被放出来，两版来回换。
+     * 「换一版」不忽略（它靠 opts.banTpls 累积禁用当天历史版本，并避开同一套骨架）。 */
+    var today = ignoreToday ? null : reports[dateStr];
     if (today) {
       lines = lines.concat(contentLines(today.text));
       var tt = today.tpls || [];
@@ -555,7 +558,7 @@
   }
 
   /* ---------- 组装单日日报 ---------- */
-  function buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules) {
+  function buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules, ignoreToday) {
     /* 种子 = 日期 + 盐 + 配置指纹 + 本机标识。
      * 加本机标识（Store.data.settings.deviceId）是为了解决：两个人配置**完全相同**
      * （公司名/岗位名留空、勾选模块一致）时，同一天会产出逐字相同的日报。
@@ -575,7 +578,22 @@
     // 让每版的模块取舍/阅读顺序都和上一版不同（800 字档仍需覆盖多数模块，但主模块能轮换）。
     if (banModules && banModules.length) yesterdayMods = yesterdayMods.concat(banModules);
 
-    var mods = pickModules(config.modules, stats, yesterdayMods, rng);
+    /* ⚠️ 第二个反馈环（同「当天已保存稿」一样会造成横跳）：
+     * 保存时 finishGeneration 会把当天的模块计入全局 moduleStats，而 pickModules 又按
+     * moduleStats 的 count 挑「最少用的」。于是每次生成都看到不同的计数 → 模块选择来回换。
+     * ignoreToday（普通生成）时，把"当天自己"已计入的那一份扣掉，让同一天反复生成看到同一快照。 */
+    var statsForPick = stats;
+    if (ignoreToday && reports[dateStr] && reports[dateStr].modules && reports[dateStr].modules.length) {
+      statsForPick = {};
+      Object.keys(stats).forEach(function (k) {
+        statsForPick[k] = { count: stats[k] ? (stats[k].count || 0) : 0, lastDate: stats[k] ? stats[k].lastDate : '' };
+      });
+      reports[dateStr].modules.forEach(function (m) {
+        if (statsForPick[m]) statsForPick[m].count = Math.max(0, statsForPick[m].count - 1);
+      });
+    }
+
+    var mods = pickModules(config.modules, statsForPick, yesterdayMods, rng);
 
     /* 本篇的模块使用预算：每个模块名被用到就 +1，之后所有选模块的地方都优先挑用得少的，
      * 避免同一模块名在一篇里被反复写（见 pickLite 的说明）。 */
@@ -584,7 +602,7 @@
     var jobMods = (Phrases.jobTypes[config.jobType] && Phrases.jobTypes[config.jobType].modules) || mods;
     mods.forEach(function (m) { tally(used, m); });
 
-    var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr), banTpls);
+    var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr), banTpls, ignoreToday);
     // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
     hist.lexWords = (Phrases.jobLex && Phrases.jobLex[config.jobType]) || [];
     var sk = pickSkeleton(rng, hist, config.layout);
@@ -825,12 +843,16 @@
     var ledger = makeLedger(reports, dateStr);   // 全周期台账每次生成只建一次
     var banTpls = (opts && opts.banTpls) || null;  // 「换一版」累积禁用同天所有历史版本的模板
     var banModules = (opts && opts.banModules) || null;  // 「换一版」累积禁用同天所有历史版本的模块
+    /* ignoreToday：普通「生成日报」用它把"当天已保存稿"彻底排除在一切反馈之外
+     * （台账/相似度比对都不看它），于是同一天反复点得到逐字相同的同一版。
+     * 否则每次生成都会拿"上一版"当参照去规避 → 两版来回横跳。 */
+    var ignoreToday = !!(opts && opts.ignoreToday);
     var prev = lastNDates(reports, dateStr, COMPARE_DAYS).map(function (d) { return reports[d].text || ''; });
-    if (reports[dateStr] && reports[dateStr].text) prev = prev.concat([reports[dateStr].text]);
+    if (!ignoreToday && reports[dateStr] && reports[dateStr].text) prev = prev.concat([reports[dateStr].text]);
     var prevPrep = prev.map(prepBigrams);
     var best = null, bestScore = Infinity;
     for (var salt = base; salt < base + 10; salt++) {
-      var r = buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules);
+      var r = buildDaily(dateStr, config, reports, stats, salt, extra, ledger, banTpls, banModules, ignoreToday);
       var mine = prepBigrams(r.text), mx = 0;
       for (var i = 0; i < prevPrep.length; i++) {
         var s = simPrepped(mine, prevPrep[i]);

@@ -1284,7 +1284,9 @@ section('M19 同一天反复生成必须稳定（ignoreToday）');
   for (i = 0; i < 3; i++) {
     d = fmt(addDays(base, i));
     r = Generator.generateDaily(d, cfg, reports, stats, '');
-    reports[d] = { date: d, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+    // statCounted 必须为 true：真机上 finishGeneration 会把该日模块计入 moduleStats，
+    // statsForPick 只在 statCounted 时才扣除「当天自己」的贡献。
+    reports[d] = { date: d, text: r.text, modules: r.modules, tpls: r.tpls || [], statCounted: true };
     r.modules.forEach(function (m) { var s = stats[m] || { count: 0 }; s.count++; stats[m] = s; });
   }
   var ds = fmt(addDays(base, 10)), first = null, prevMods = null, stable = true;
@@ -1295,7 +1297,7 @@ section('M19 同一天反复生成必须稳定（ignoreToday）');
     // 模拟 finishGeneration 的 moduleStats 记账（撤销上一版 → 记入本版）
     if (prevMods) prevMods.forEach(function (m) { if (stats[m]) stats[m].count--; });
     r.modules.forEach(function (m) { var s = stats[m] || { count: 0 }; s.count++; stats[m] = s; });
-    reports[ds] = { date: ds, text: r.text, modules: r.modules, tpls: r.tpls || [] };
+    reports[ds] = { date: ds, text: r.text, modules: r.modules, tpls: r.tpls || [], statCounted: true };
     prevMods = r.modules;
   }
   ok(stable, '反复点「生成日报」8 次输出逐字不变（ignoreToday）');

@@ -432,13 +432,18 @@
       cb.type = 'checkbox';
       cb.dataset.key = sec.key;
       cb.checked = sec.key === 'done' ? true : !!sec.on;
-      cb.disabled = sec.key === 'done'; // 「今日完成」为核心栏目，不可关闭
-      cb.title = cb.disabled ? '「今日完成」为核心栏目，不可关闭' : '';
+      cb.disabled = sec.key === 'done'; // 「主要工作」是核心内容，不可关闭
+      cb.title = cb.disabled ? '「主要工作」是核心内容，不可关闭' : '';
 
+      /* 两栏标题固定为学习通表单字段名（收获与感受 / 主要工作、遇到的问题及如何解决的），
+       * 改名不会影响生成结果 —— 所以这里做成**只读**，显示的名字与生成结果保持一致，避免误解。 */
+      var LABEL = { done: '主要工作', gains: '收获与感受', problems: '遇到的问题与解决' };
       var input = document.createElement('input');
       input.type = 'text';
-      input.value = sec.title;
-      input.placeholder = { done: '今日完成', gains: '收获与学习', problems: '遇到的问题与解决', plans: '明日计划' }[sec.key];
+      input.value = LABEL[sec.key] || sec.title;
+      input.readOnly = true;
+      input.title = '两栏标题固定为学习通表单字段名，不可改';
+      input.placeholder = LABEL[sec.key];
 
       row.appendChild(cb);
       row.appendChild(input);

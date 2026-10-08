@@ -535,15 +535,22 @@
       if (start < 0) return '';
       return lines.slice(start + 1, end).join('\n').trim();
     }
+    /* 复制某一栏。找不到栏标题时给**明确**提示（旧格式稿 / 标题被手动改过），
+     * 而不是笼统说「还没生成内容」——正文其实可能是有的。 */
+    function copyFormBlock(head, label, okTip, edId) {
+      var t = formBlock(head, edId);
+      if (t) { copyText(t, okTip); return; }
+      if (($(edId || 'reportEditor').value || '').trim()) {
+        App.toast('这版没有「' + label + '」栏（可能是旧格式，或标题被改过）——可点「📋 整篇」复制，或重新生成');
+      } else {
+        App.toast('还没有内容，先点生成');
+      }
+    }
     $('copyGainBtn').addEventListener('click', function () {
-      var t = formBlock(FORM_HEAD_GAIN);
-      if (!t) { App.toast('还没生成内容，先点「✨ 生成日报」'); return; }
-      copyText(t, '已复制「收获与感受」，粘进学习通第一个框');
+      copyFormBlock(FORM_HEAD_GAIN, '收获与感受', '已复制「收获与感受」，粘进学习通第一个框');
     });
     $('copyWorkBtn').addEventListener('click', function () {
-      var t = formBlock(FORM_HEAD_WORK);
-      if (!t) { App.toast('还没生成内容，先点「✨ 生成日报」'); return; }
-      copyText(t, '已复制「主要工作…」，粘进学习通第二个框');
+      copyFormBlock(FORM_HEAD_WORK, '主要工作', '已复制「主要工作…」，粘进学习通第二个框');
     });
     $('copyBtn').addEventListener('click', function () {
       var t = $('reportEditor').value.trim();
@@ -592,14 +599,10 @@
     });
     $('aggGenBtn').addEventListener('click', generateAgg);
     $('aggGainBtn').addEventListener('click', function () {
-      var t = formBlock('收获与感受', 'aggEditor');
-      if (!t) { App.toast('先生成草稿'); return; }
-      copyText(t, '已复制「收获与感受」，粘进学习通对应输入框');
+      copyFormBlock(FORM_HEAD_GAIN, '收获与感受', '已复制「收获与感受」，粘进学习通对应输入框', 'aggEditor');
     });
     $('aggWorkBtn').addEventListener('click', function () {
-      var t = formBlock('主要工作、遇到的问题及如何解决的', 'aggEditor');
-      if (!t) { App.toast('先生成草稿'); return; }
-      copyText(t, '已复制「主要工作…」，粘进学习通对应输入框');
+      copyFormBlock(FORM_HEAD_WORK, '主要工作', '已复制「主要工作…」，粘进学习通对应输入框', 'aggEditor');
     });
     $('aggCopyBtn').addEventListener('click', function () {
       var t = $('aggEditor').value.trim();

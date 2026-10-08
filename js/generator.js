@@ -583,7 +583,10 @@
      * moduleStats 的 count 挑「最少用的」。于是每次生成都看到不同的计数 → 模块选择来回换。
      * ignoreToday（普通生成）时，把"当天自己"已计入的那一份扣掉，让同一天反复生成看到同一快照。 */
     var statsForPick = stats;
-    if (ignoreToday && reports[dateStr] && reports[dateStr].modules && reports[dateStr].modules.length) {
+    /* ⚠️ 只在「当天已保存稿确实计入过 moduleStats」时才扣（statCounted）——
+     * 老数据 / 导入的稿可能没计过数，扣了就会把别人的计数压低、偏袒这些模块。 */
+    if (ignoreToday && reports[dateStr] && reports[dateStr].statCounted &&
+        reports[dateStr].modules && reports[dateStr].modules.length) {
       statsForPick = {};
       Object.keys(stats).forEach(function (k) {
         statsForPick[k] = { count: stats[k] ? (stats[k].count || 0) : 0, lastDate: stats[k] ? stats[k].lastDate : '' };

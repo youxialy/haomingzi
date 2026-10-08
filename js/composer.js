@@ -344,73 +344,6 @@
     '各环节衔接顺畅，没有出现卡点。',
     '工作按计划完成，未出现异常情况。'
   ];
-  var PLAN_PATS = [
-    '继续做好{m}相关工作，进一步提高效率与质量。',
-    '把{m}的熟练度再往上提一档，重点练习易错环节。',
-    '系统梳理{m}的流程要点，形成自己的操作清单。',
-    '主动承担更多{m}相关的任务，争取独立完成一整个环节。',
-    '向带教老师请教{m}的进阶技巧，对照改进自己的做法。',
-    '给{m}设定小的质量目标，逐日检查达成情况。',
-    '把之前{m}中遇到的问题做一次集中复盘，巩固正确做法。',
-    '预留整块时间推进{m}，减少被临时事务打断的影响。',
-    '关注{m}与前后环节的衔接，减少交接时的返工。',
-    '在{m}上尝试更快更稳的节奏，缩短单项处理耗时。',
-    '把{m}的注意事项整理成一页要点，随时对照。',
-    '下{unit}在{m}上多做一次自查，把差错挡在交付前。',
-    '计划把{m}中重复性高的部分做成模板，节省时间。',
-    '在{m}上减少对提示的依赖，尽量自己判断。',
-    '下{unit}围绕{m}做一次小结，把进步和不足都写下来。',
-    '把{m}的耗时记录下来，找出可以优化的环节。',
-    '在{m}上多向同事取经，把做法磨得更规范。',
-    '给{m}排一个优先级，确保按时完成不被挤占。',
-    '{m}继续按现有节奏推进，重点盯住容易出错的两个位置。',
-    '把{m}的做法再规范一遍，减少凭经验处理的情况。',
-    '下{unit}在{m}上多做一次交叉核对，降低疏漏概率。',
-    '把{m}的经验整理出来，形成一份可以照着做的说明。',
-    '在{m}上尝试提前一天做准备，减少临时赶工。',
-    '针对{m}的薄弱环节，下{unit}安排固定时间专门练。',
-    '把{m}中重复的动作固定成流程，提高整体效率。',
-    '{m}相关的新要求及时学习，避免按旧做法处理。',
-    '在{m}上多和同事交换做法，取长补短。',
-    '给{m}设一个时间上限，避免单件事占掉太多精力。',
-    '下{unit}在{m}上减少返工，先确认要求再动手。',
-    '把{m}中遇到的问题汇总一次，集中请教解决。',
-    '在{m}上多做总结，把好的做法固定下来。',
-    '继续跟进{m}的进度，做到心中有数。',
-    '把{m}的细节把控再严一些，宁可慢一点也不出错。',
-    '在{m}上主动向前一步，不等安排就先把准备做好。',
-    '下{unit}把{m}与其他环节的配合再理顺一些。',
-    '针对{m}制定一个小的改进目标，逐日检查。',
-    '把{m}的做法整理成一页要点，方便随时翻看。',
-    '在{m}上多留一点自查时间，减少返工。',
-    '针对{m}的薄弱环节做针对性练习。',
-    '把{m}和上下游环节的衔接理清楚，减少等待。',
-    '继续熟悉{m}的规范要求，做到不用查也能上手。',
-    '给{m}定个完成时限，避免拖到最后一天。',
-    '把{m}中出现过的问题列成清单，逐条对照改进。',
-    '尝试在{m}上少依赖提示，独立走完完整流程。',
-    '把{m}的耗时记录下来，找出可压缩的环节。',
-    '就{m}的具体做法再向带教请教一次，固定下来。'
-  ];
-  var PLAN_CLOSERS = [
-    '坚持每日记录与复盘，配合指导老师安排完成各项任务。',
-    '继续做好每日台账与笔记，随时接受老师的检查与指导。',
-    '保持稳定出勤与交付节奏，遇到临时任务优先配合。',
-    '每周对自己的完成情况做一次小结，及时调整工作方法。',
-    '把本{unit}形成的做法固定下来，减少重复摸索。',
-    '继续保持主动请教和及时复盘的习惯，稳步把工作做扎实。',
-    '按计划推进各项任务，同时留出时间补自己的短板。',
-    '下{unit}会在时间安排上更从容一些，避免前松后紧。',
-    '把待办清单维护好，做到每天的事每天清。',
-    '遇到拿不准的先问清楚，不把疑问带过夜。',
-    '保持记录的连续性，方便随时回看和汇总。',
-    '按岗位要求稳定输出，质量优先于速度。',
-    '给自己留一点余量，临时任务来了也不至于打乱全盘。',
-    '继续把每一天的小结写扎实，积累比突击更有用。',
-    '定期和带教老师对一次进度，及时校正方向。',
-    '把本{unit}暴露出的短板列成清单，逐项消灭。'
-  ];
-
   /* 把区间内的日报问题「按类型」归纳成一句周/月口径的话。
    * 优先用 Phrases.problemKinds（与 Phrases.problems 逐条对齐）做类型化归纳，
    * 这样周报里不会出现与日报逐字相同的长句；匹配不到（旧数据 / 自定义句式）时
@@ -483,23 +416,28 @@
     var extras = [];
     recs.forEach(function (r) { if (r.extra && extras.indexOf(r.extra) < 0) extras.push(r.extra); });
 
-    var isWeek = type === 'weekly';
-    var unit = isWeek ? '周' : '月';
-    var kind = isWeek ? '周报' : '月报';
-    var range = from + ' ~ ' + to;
-    var batch = isWeek
-      ? '（实习第' + (weekNumber(config, from) || '?') + '周）'
-      : '（' + from.slice(0, 7) + '）';
-    var headExtra = config && config.company ? '（' + config.company + '）' : '';
+    var unit = (type === 'weekly') ? '周' : '月';
     var job = (config && config.jobTitle) || '岗位';
 
-    var L = [];
-    L.push(tf(sk.head, { unit: unit, kind: kind, range: range, batch: batch, ext: headExtra }));
-    L.push('');
+    /* 两栏输出，字段名与学习通「周报/月报」提交表单一致（与日报同一套格式）：
+     *   收获与感受                        ← 收获与成长
+     *   主要工作、遇到的问题及如何解决的  ← 本周期完成工作 + 遇到的问题与改进
+     * 去掉【实习周报】抬头/区间/批次、章节大序号与「下周期工作计划」——表单里没有这些字段。 */
+    var FORM_GAIN = '收获与感受';
+    var FORM_WORK = '主要工作、遇到的问题及如何解决的';
 
-    // ---- 一、本周期完成工作 ----
-    L.push(secPrefix(sk.secStyle, 0) + '本' + unit + '完成工作');
-    // 头尾分别洗牌 + 尾语按步长错开取模：旧版两边都按 i 取模，导致"第 i 条永远同一组头尾"
+    var L = [];
+
+    // ---- 第一栏：收获与感受 ----
+    L.push(FORM_GAIN);
+    var modsStr = top.slice(0, 2).map(function (t) { return t[0]; }).join('」「');
+    L.push(tf(choice(rng, GAIN_MAIN), { unit: unit, mods: modsStr, job: job }));
+    pickN(rng, GAIN_TAILS, 2).forEach(function (s) { L.push(s); });
+
+    // ---- 第二栏：主要工作 + 遇到的问题及解决的（同栏内续编号）----
+    L.push('');
+    L.push(FORM_WORK);
+    // 头尾分别洗牌 + 尾语按步长错开取模：旧版两边都按 i 取模，导致「第 i 条永远同一组头尾」
     var heads = pickN(rng, WORK_HEADS, WORK_HEADS.length);
     var headsAct = pickN(rng, WORK_HEADS_ACT, WORK_HEADS_ACT.length);
     var tails = pickN(rng, WORK_TAILS, WORK_TAILS.length);
@@ -518,71 +456,20 @@
     }
     L.push(sk.joined ? (workLines.join('；') + '。') : workLines.join('\n'));
 
-    // ---- 二、收获与成长 ----
-    L.push('');
-    L.push(secPrefix(sk.secStyle, 1) + '收获与成长');
-    var modsStr = top.slice(0, 2).map(function (t) { return t[0]; }).join('」「');
-    L.push(tf(choice(rng, GAIN_MAIN), { unit: unit, mods: modsStr, job: job }));
-    pickN(rng, GAIN_TAILS, 2).forEach(function (s) { L.push(s); });
-
-    // ---- 三、遇到的问题与改进（按周期口径归纳，不逐字照搬日报句子）----
-    L.push('');
-    L.push(secPrefix(sk.secStyle, 2) + '遇到的问题与改进');
+    // 问题与改进：接在主要工作之后、同栏内续编号（不再另起「三、」大序号）
+    var pStart = top.length + (extras.length ? 1 : 0);
     if (problems.length) {
       var summary = problemSummaryOf(recs, problems, unit);
-      L.push(sk.joined ? (summary + choice(rng, FIX_PATS).replace(/\{unit\}/g, unit)) : (itemPrefix(sk, 0) + summary));
-      if (!sk.joined) {
-        L.push(itemPrefix(sk, 1) + choice(rng, FIX_PATS).replace(/\{unit\}/g, unit));
+      if (sk.joined) {
+        L.push(summary + choice(rng, FIX_PATS).replace(/\{unit\}/g, unit));
+      } else {
+        L.push(itemPrefix(sk, pStart) + summary);
+        L.push(itemPrefix(sk, pStart + 1) + choice(rng, FIX_PATS).replace(/\{unit\}/g, unit));
       }
     } else {
       var smooth = '本' + unit + '工作整体平稳顺利，未出现明显问题；' + choice(rng, SMOOTH_TAILS);
-      L.push(sk.joined ? smooth : (itemPrefix(sk, 0) + smooth));
+      L.push(sk.joined ? smooth : (itemPrefix(sk, pStart) + smooth));
     }
-
-    // ---- 四、下周期工作计划 ----
-    /* 挂靠**本期事实**（2026-09-28）。原先这里是 `pickN(rng, PLAN_PATS, ...)` 纯随机取句，
-     * 实测 12 期周报里只有 **2.8%** 的行引用本期事实，读着就是套话。
-     * 现在按模块的本期次数 `mc` 分流：
-     *   mc === 0 → aggPlanZero（本期一次没轮到，下期补）
-     *   mc >= 1  → aggPlanCount（本期只做了 {c} 次）
-     *   本期做得最多的那个 → aggPlanMost（继续保持）
-     * ⚠️ 真值约束是硬约束：zero 只用于 0 次、count/most 只用于 >=1 次，**兜底绝不放宽** ——
-     *    否则会说出「本{unit}做了 0 次」这种假事实（日报修 2 踩过同一个坑）。
-     * 同段内不复用同一条模板（见下面的 pickPlanTpl），但**允许同类锚点连着出现**。 */
-    L.push('');
-    L.push(secPrefix(sk.secStyle, 3) + '下' + unit + '工作计划');
-    var all = (config && config.modules) ? config.modules.slice() : top.map(function (t) { return t[0]; });
-    var least = all.slice().sort(function (a, b) { return (mc[a] || 0) - (mc[b] || 0); }).slice(0, 2);
-    var mostMod = top.length ? top[0][0] : null;
-    var planTargets = least.slice();
-    if (mostMod && planTargets.indexOf(mostMod) < 0) planTargets.push(mostMod);
-    var AP = (typeof Phrases !== 'undefined') ? Phrases : {};
-    /* 同段内不复用同一条模板（撞了就重抽，最多 4 次）。
-     * ⚠️ 这里**不做"锚点种类不重复"** —— 试过，结果每期只剩 1 条有事实、另 1 条退回空表态兜底
-     * （实测有事实挂靠率只有 55.6%）。同类锚点连着出现其实很自然：
-     * 「A 本周 2 次」「B 本周 3 次」读起来正常，只要句式不同、数字和模块不同就行。 */
-    var usedPlanTpl = {};
-    function pickPlanTpl(pool) {
-      for (var k = 0; k < 4; k++) {
-        var cand = choice(rng, pool);
-        if (!usedPlanTpl[cand]) { usedPlanTpl[cand] = 1; return cand; }
-      }
-      return null;
-    }
-    var planLines = planTargets.map(function (m, i) {
-      var c = mc[m] || 0;
-      var isMost = (m === mostMod) && (i === planTargets.length - 1);
-      var kind = (isMost && c > 0) ? 'most' : (c === 0 ? 'zero' : 'count');
-      var pool = { zero: AP.aggPlanZero, count: AP.aggPlanCount, most: AP.aggPlanMost }[kind] || PLAN_PATS;
-      var tpl = pickPlanTpl(pool) || pickPlanTpl(PLAN_PATS) || choice(rng, PLAN_PATS);
-      var body = tf(tpl, { m: m, unit: unit, c: c });
-      return sk.joined ? body.replace(/。$/, '') : (itemPrefix(sk, i) + body);
-    });
-    var closer = tf(choice(rng, PLAN_CLOSERS), { unit: unit });
-    planLines.push(sk.joined ? closer.replace(/。$/, '') : (itemPrefix(sk, planTargets.length) + closer));
-    L.push(sk.joined ? (planLines.join('；') + '。') : planLines.join('\n'));
-
-    if (sk.closer) L.push(tf(sk.closer, { unit: unit }));
 
     return { text: L.join('\n'), count: recs.length, from: from, to: to, type: type, skeleton: sk.id };
   }

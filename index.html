@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026100801">
+<link rel="stylesheet" href="css/style.css?v=2026100802">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -134,11 +134,13 @@
       <div class="stat-line" id="aggStat" aria-live="polite"></div>
       <div class="actions">
         <button class="btn primary" id="aggGenBtn">✨ 生成草稿</button>
-        <button class="btn" id="aggCopyBtn">📋 复制</button>
+        <button class="btn" id="aggGainBtn" title="复制「收获与感受」这一栏的正文（不含栏目标题）">📋 收获与感受</button>
+        <button class="btn" id="aggWorkBtn" title="复制「主要工作、遇到的问题及如何解决的」这一栏的正文（不含栏目标题）">📋 主要工作与问题</button>
+        <button class="btn" id="aggCopyBtn" title="复制整篇（两栏标题都带上）">📋 整篇</button>
         <button class="btn ghost" id="aggPrintBtn">🖨 打印</button>
         <button class="btn ghost" id="aggSaveBtn">💾 保存留档</button>
       </div>
-      <p class="hint">按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报；每个范围各留一份草稿，切来切去也不丢。</p>
+      <p class="hint">周报/月报的学习通提交框与日报一样是两栏（<b>收获与感受</b> / <b>主要工作、遇到的问题及如何解决的</b>）：点对应的「📋」一键复制该栏正文，分别粘贴即可。按学校批次时间窗口选择范围（学习通里周报月报按批次提交，过期可能不允许补交，建议期内完成）。草稿汇总自区间内已保存的日报；每个范围各留一份草稿，切来切去也不丢。</p>
     </div>
     <div class="card editor-card">
       <div class="draft-hint" id="aggDraftHint" hidden role="status"></div>
@@ -372,13 +374,13 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026100801"></script>
-<script defer src="js/phrases.js?v=2026100801"></script>
-<script defer src="js/generator.js?v=2026100801"></script>
-<script defer src="js/composer.js?v=2026100801"></script>
-<script defer src="js/editor.js?v=2026100801"></script>
-<script defer src="js/calendar.js?v=2026100801"></script>
-<script defer src="js/app.js?v=2026100801"></script>
-<script defer src="js/ai.js?v=2026100801"></script>
+<script defer src="js/store.js?v=2026100802"></script>
+<script defer src="js/phrases.js?v=2026100802"></script>
+<script defer src="js/generator.js?v=2026100802"></script>
+<script defer src="js/composer.js?v=2026100802"></script>
+<script defer src="js/editor.js?v=2026100802"></script>
+<script defer src="js/calendar.js?v=2026100802"></script>
+<script defer src="js/app.js?v=2026100802"></script>
+<script defer src="js/ai.js?v=2026100802"></script>
 </body>
 </html>

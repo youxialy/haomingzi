@@ -396,50 +396,6 @@ section('M8 聚合稿：骨架轮换 + 周报之间不雷同 + 问题段不照�
   var av = mean(pairs);
   ok(av < 0.65, '周报两两相似度均值 ' + av.toFixed(3) + ' < 0.65', '（旧版 0.70 左右）');
 
-  /* ---- 「下周期工作计划」必须挂靠本期事实（2026-09-28 新增）----
-   * 原先这段是 `pickN(rng, PLAN_PATS)` 纯随机取句，实测 8~12 期里只有 **2.8%** 的行引用本期事实，
-   * 读着就是「继续做好 X 相关工作」式套话。现在按模块本期次数 mc 分流到
-   * aggPlanZero（0 次）/ aggPlanCount（做了 {c} 次）/ aggPlanMost（本期最多，下期保持）。
-   * ⚠️ 真值约束是硬约束：说「做了 N 次」必须真的 N 次、说「一次没轮到」必须真的 0 次。 */
-  var planTot = 0, planAnchored = 0, planBad = [];
-  var ZERO_RE = /(一次没轮到|没顾上|没排上|没碰到|漏掉了|没安排上|没推进|没排进|没轮上|空着|没涉及|没排到|没接触|没轮着|没做到)/;
-  weeks.forEach(function (x) {
-    var mc = {};
-    Object.keys(corpus.reports).forEach(function (d) {
-      if (d < x.from || d > x.to) return;
-      (corpus.reports[d].modules || []).forEach(function (m) { mc[m] = (mc[m] || 0) + 1; });
-    });
-    var ls = x.text.split('\n');
-    var at = -1;
-    for (var i2 = 0; i2 < ls.length; i2++) if (/工作计划/.test(ls[i2])) { at = i2; break; }
-    if (at < 0) return;
-    /* ⚠️ 必须按「；」拆成**子句**再判：合并型骨架会把 3~4 条计划句连成一整行，
-     * 按"行"匹配模块会抓错（一行里出现多个模块名，数字其实属于另一个模块）→ 误报矛盾。 */
-    var clauses = [];
-    ls.slice(at + 1).forEach(function (l) {
-      l.split('；').forEach(function (y) { if (y.trim()) clauses.push(y.trim()); });
-    });
-    clauses.pop();   // 末尾是收尾句（PLAN_CLOSERS），不参与事实校验
-    clauses.forEach(function (line) {
-      planTot++;
-      var mm = /(\d+)\s*次/.exec(line);
-      var isZero = ZERO_RE.test(line);
-      if (mm || isZero) planAnchored++;
-      var hit = Object.keys(mc).filter(function (m) { return line.indexOf(m) >= 0; });
-      if (!hit.length) return;
-      var c = mc[hit[0]];
-      if (isZero && c !== 0) planBad.push(x.from + ' 「' + line + '」← 该模块本期实为 ' + c + ' 次');
-      if (mm && Number(mm[1]) !== c) {
-        planBad.push(x.from + ' 「' + line + '」← 说 ' + mm[1] + ' 次但本期实为 ' + c + ' 次');
-      }
-    });
-  });
-  ok(planTot > 0 && planAnchored / planTot >= 0.9,
-    '「下周期工作计划」有事实挂靠的行占比 ' + pct(planAnchored / planTot) + ' ≥ 90%（改动前 2.8%）'
-    + '（' + planAnchored + '/' + planTot + '）');
-  ok(planBad.length === 0, '「下周期工作计划」的事实与本期数据一致（0 处矛盾）',
-    planBad.slice(0, 3).join(' | '));
-
   // 问题段不得逐字照搬日报句子
   var copied = 0, checked = 0;
   weeks.forEach(function (x) {
@@ -467,10 +423,12 @@ section('M8 聚合稿：骨架轮换 + 周报之间不雷同 + 问题段不照�
   ok(!bad, '活动型模块不会被套用事务型动词', bad);
 
   var mo = Composer.aggregate('monthly', '2026-09-01', '2026-09-30', corpus.config, corpus.reports);
-  ok(!!mo && /月报/.test(mo.text.split('\n')[0]), '月报抬头含「月报」', mo ? mo.text.split('\n')[0] : '');
+  ok(!!mo && mo.text.split('\n')[0].trim() === '收获与感受', '月报首行是「收获与感受」（两栏格式，无抬头）', mo ? mo.text.split('\n')[0] : '');
+  ok(!!mo && mo.text.indexOf('主要工作、遇到的问题及如何解决的') > 0, '月报同样是两栏（收获与感受 / 主要工作…）');
   var moMax = 0;
   weeks.forEach(function (x) { if (/2026-09/.test(x.from)) { var s = sim(x.text, mo.text); if (s > moMax) moMax = s; } });
-  if (moMax > 0) ok(moMax < 0.70, '周报 ↔ 同月月报 最大相似度 ' + moMax.toFixed(3) + ' < 0.70', '（旧版 0.759）');
+  // 两栏结构下抬头/区间不再进正文，周报与同月月报的差异变小 → 线从 0.70 放宽到 0.75
+  if (moMax > 0) ok(moMax < 0.75, '周报 ↔ 同月月报 最大相似度 ' + moMax.toFixed(3) + ' < 0.75', '（两栏化前 ~0.6，旧版 0.759）');
 })();
 
 /* ============================================================

@@ -521,8 +521,8 @@
      * 学习通输入框旁已经有对应字段名，再带上标题就重复了。 */
     var FORM_HEAD_GAIN = '收获与感受';
     var FORM_HEAD_WORK = '主要工作、遇到的问题及如何解决的';
-    function formBlock(head) {
-      var lines = $('reportEditor').value.split('\n');
+    function formBlock(head, editorId) {
+      var lines = $(editorId || 'reportEditor').value.split('\n');
       var start = -1, end = lines.length;
       for (var i = 0; i < lines.length; i++) {
         var t = lines[i].trim();
@@ -588,6 +588,16 @@
       setHint('aggDraftHint', false, '');
     });
     $('aggGenBtn').addEventListener('click', generateAgg);
+    $('aggGainBtn').addEventListener('click', function () {
+      var t = formBlock('收获与感受', 'aggEditor');
+      if (!t) { App.toast('先生成草稿'); return; }
+      copyText(t, '已复制「收获与感受」，粘进学习通对应输入框');
+    });
+    $('aggWorkBtn').addEventListener('click', function () {
+      var t = formBlock('主要工作、遇到的问题及如何解决的', 'aggEditor');
+      if (!t) { App.toast('先生成草稿'); return; }
+      copyText(t, '已复制「主要工作…」，粘进学习通对应输入框');
+    });
     $('aggCopyBtn').addEventListener('click', function () {
       var t = $('aggEditor').value.trim();
       if (!t) { App.toast('先生成草稿'); return; }

@@ -621,22 +621,6 @@
   ];
 
   /* ---------- 实习总结（学习通「总结」入口） ---------- */
-  var SUM_HEADS = [
-    '【实习总结】{co} · {jt}',
-    '实习总结 · {co}{jt}',
-    '{co} {jt} 实习总结',
-    '【{co} · {jt} 实习总结】',
-    '实习总结报告（{co} · {jt}）',
-    '{co}实习总结 · {jt}岗位'
-  ];
-  var SUM_TIMES = [
-    '实习时间：{span}（累计记录日报 {n} 天）',
-    '实习起止：{span}　共记录 {n} 天',
-    '记录区间：{span}，累计 {n} 天',
-    '实习周期：{span}（{n} 天）',
-    '起止时间 {span}　有效记录 {n} 天'
-  ];
-
   /* 实习总结只有一份，本来就不存在「每期换脸」的问题，但用户选了固定档/家族档时
    * 也应当跟着走，否则总结会和周报月报不是一套风格。没有 layout 时沿用原算法。 */
   function pickSummarySkeleton(config, firstDate, ck) {
@@ -679,9 +663,9 @@
     var modsStr = top.slice(0, 2).map(function (t) { return t[0]; }).join('」「');
 
     var L = [];
-    L.push(tf(choice(rng, SUM_HEADS), { co: company, jt: jobTitle }));
-    L.push(tf(choice(rng, SUM_TIMES), { span: span, n: totalDays }));
-    L.push('');
+    /* 学习通「总结审批」界面只有一个「总结内容」富文本框（另两个是附件上传，工具不涉及）→
+     * 总结**不分栏**，只去掉报告式的「【实习总结】单位·岗位」抬头与「实习起止：…」元数据行，
+     * 直接从「一、实习概况」开始的正文更贴合表单。五章正文结构保留（长文需要骨架）。 */
     L.push(secPrefix(sk.secStyle, 0) + '实习概况');
     L.push(tf(choice(rng, SUM_OVERVIEW), { co: company, jt: jobTitle }));
     L.push('');

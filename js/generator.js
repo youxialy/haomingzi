@@ -22,16 +22,11 @@
   var DEFAULT_SECTIONS = [
     { key: 'done', title: '今日完成', on: true },
     { key: 'gains', title: '收获与学习', on: true },
-    { key: 'problems', title: '遇到的问题与解决', on: true },
-    { key: 'plans', title: '明日计划', on: true }
+    { key: 'problems', title: '遇到的问题与解决', on: true }
   ];
   function defaultSections() {
     return JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
   }
-  /* 栏目标题的「key → 默认标题」映射，唯一来源。
-   * 兜底分支也从这里取，避免在别处再抄一份同样的标题（改一处漏一处会让自定义标题失效）。 */
-  var DEFAULT_TITLES = {};
-  DEFAULT_SECTIONS.forEach(function (s) { DEFAULT_TITLES[s.key] = s.title; });
 
   /* ---------- 随机数（种子化，可复现） ---------- */
   function hashStr(s) {
@@ -589,293 +584,96 @@
     var jobMods = (Phrases.jobTypes[config.jobType] && Phrases.jobTypes[config.jobType].modules) || mods;
     mods.forEach(function (m) { tally(used, m); });
 
-    // 明日计划模块：全局最不常用的优先，同时受本篇预算约束
-    var planPool = config.modules.slice().sort(function (a, b) {
-      return ((stats[a] ? stats[a].count : 0) - (stats[b] ? stats[b].count : 0));
-    });
-    var planHead = planPool.slice(0, Math.max(2, Math.ceil(planPool.length * 0.7)));
-    var planA = pickCapped(rng, planHead, used, 3, config.modules);
-    var planB = pickCapped(rng, planHead, used, 3, config.modules);
-    var planMods = (planB && planB !== planA) ? [planA, planB] : [planA];
-
     var hist = makeHist(dateStr, reports, ledger || makeLedger(reports, dateStr), banTpls);
     // 岗位语域词表：供模板里的 {lex} 取词（跨岗位措辞差异，见 withLex）
     hist.lexWords = (Phrases.jobLex && Phrases.jobLex[config.jobType]) || [];
     var sk = pickSkeleton(rng, hist, config.layout);
     var usedTpls = [SKEL_KEY + sk.id];
 
-    /* ---------- 明日计划的「事实锚点」（修 2） ----------
-     * 用户反馈「明日计划太套话、一看就是模板」。诊断后发现根因**不是骨架重复**
-     * （旧池 70 条 70 种结构，骨架重复率 0%），而是**信息量为零** ——
-     * 91% 的句子在说「明天我会继续认真做这个模块」，与今天发生了什么无关。
-     * 修法：让计划句挂靠**真实事实**。事实分两类，可用性不同：
-     *   ① 今天类（{left} 今天还剩几项 / {n} 今天的量 / 今天卡在哪一步）
-     *      **只在「该模块今天确实做过」时才成立**。「今日完成」栏目只列今天的 4 个模块，
-     *      否则同一篇里就会自相矛盾（今日完成没有 X，明日计划却说今天 X 还剩 2 项）。
-     *      实测：计划模块只有 52% 属于今天做过的模块 —— 所以光有这一类不够。
-     *   ② 历史类（{ago} 距上次做几天 / {last} 上次是星期几）
-     *      对任何模块都成立，而且它正好回答了「明天为什么挑这个模块」。
-     * 两类合起来覆盖几乎全部计划句；都不成立才退回「动作具体但无锚点」的兜底组。
-     * 另加两条同篇约束：**锚点种类不重复**、**最多 1 条无锚点**（两条都空表态最难看）。 */
-    var modToday = {};        // 模块 → 今天这个模块的量（done 栏目写下的数字，跨栏目一致）
-    var planShapes = {};      // 本篇已用过的锚点种类
-    var planInfoCache = {};
-
-    /* 该模块上次出现在「今日完成」里是哪天 —— 返回 { ago, last } 或 null */
-    function planLastDone(m) {
-      var keys = Object.keys(reports), best = null, i, ds, rr;
-      for (i = 0; i < keys.length; i++) {
-        ds = keys[i];
-        if (ds >= dateStr) continue;                    // 只看今天之前；日期串可直接比大小
-        if (best !== null && ds <= best) continue;
-        rr = reports[ds];
-        if (rr && rr.modules && rr.modules.indexOf(m) >= 0) best = ds;
-      }
-      if (best === null) return null;
-      var ago = Math.round((Store.parse(dateStr) - Store.parse(best)) / 864e5);
-      return { ago: ago < 1 ? 1 : ago, last: '星期' + '日一二三四五六'[Store.parse(best).getDay()] };
-    }
-
-    /* 该模块可用哪些锚点，以及对应的占位符取值（按模块缓存，避免重复扫 reports）
-     * 真值表 —— 只放行**成立**的锚点种类，这是硬约束：
-     *   今天做过            → left / n / today
-     *   今天没做、昨天做过  → yday（说「隔了 1 天没做」别扭，所以单独一组）
-     *   今天没做、上次更早  → ago（天数）/ last（星期几）—— 拆两类是为了让
-     *                         「今天没做过」的模块也有两个互不冲突的锚点可选
-     *   从没做过            → plain（兜底，永远成立） */
-    function planInfo(m) {
-      if (planInfoCache[m]) return planInfoCache[m];
-      var info;
-      if (modToday[m] !== undefined) {
-        info = { truth: { left: 1, n: 1, today: 1, plain: 1 },
-          vars: { n: modToday[m], left: 1 + Math.floor(rng() * 3) } };
-      } else {
-        var h = planLastDone(m);
-        if (h && h.ago === 1) info = { truth: { yday: 1, plain: 1 }, vars: {} };
-        else if (h && h.ago >= 2) {
-          info = { truth: { ago: 1, last: 1, plain: 1 }, vars: { ago: h.ago, last: h.last } };
-        } else info = { truth: { plain: 1 }, vars: {} };
-      }
-      planInfoCache[m] = info;
-      return info;
-    }
-
-    /* 模板属于哪一类锚点。⚠️ 顺序有意义：
-     * ① 先判占位符 —— 「今天还剩 2 项」里也有「今天」二字，反过来会误判成今天类；
-     * ② 「昨天」必须独立成 yday、**排在 today 之前** —— 「昨天刚做过」对
-     *    「今天做过」的模块是假话，混进 today 就会放出假事实。 */
-    function planKind(tpl) {
-      if (!tpl) return 'plain';
-      if (tpl.indexOf('{left}') >= 0) return 'left';
-      if (tpl.indexOf('{n}') >= 0) return 'n';
-      if (tpl.indexOf('{ago}') >= 0) return 'ago';
-      if (tpl.indexOf('{last}') >= 0) return 'last';
-      if (/昨天|前天/.test(tpl)) return 'yday';
-      if (/今天|今日/.test(tpl)) return 'today';
-      return 'plain';
-    }
-
-    function planFacts(m) {
-      var v = planInfo(m).vars;
-      return {
-        module: m, n: v.n || 0, left: v.left || 0,
-        ago: v.ago || 0, last: v.last || ''
-      };
-    }
-
-    /* 取一条「成立的」计划句。三级筛选，**任何一级都不放宽真值约束**。
-     * ⚠️ 这里踩过一个坑：最初的最后一级是 `pool.slice()`（退回整个池子），
-     * 于是给「今天没做过」的模块选中了「今天走了 {n} 项」的句式，而 n 拿不到值只能是 0，
-     * 生成出「短视频拍摄剪辑今天的0项里有一项卡了较久」这种**假事实**。
-     * 真值是关于世界的断言，必须硬约束；可以放弃的只有「锚点种类不重复」。
-     * poolOverride 用来指定别的池（收尾句用 planTail）—— 真值过滤对两个池都生效，
-     * 所以活动型模块取 planTail 时也会自动避开 {left}/{n}/{ago} 那些条目。 */
-    function planPick(m, poolOverride) {
-      var info = planInfo(m);
-      var pool = poolOverride ||
-        (/^(参加|学习|复盘|晨间)/.test(m) ? Phrases.plansActivity : Phrases.plans);
-      pool = poolByStyle(pool);      // 「不写件数」档会筛掉带 {n} 的句式（「今天走了 12 项」）
-      function cand(stage) {
-        return pool.filter(function (t) {
-          var k = planKind(t);
-          if (!info.truth[k]) return false;              // 真值：永不放宽
-          if (stage >= 2 && planShapes[k]) return false; // 锚点种类不重复
-          if (stage >= 3 && k === 'plain') return false; // 尽量不用无锚点兜底组
-          return true;
-        });
-      }
-      var list = cand(3);
-      if (!list.length) list = cand(2);
-      if (!list.length) list = cand(1);
-      if (!list.length) return '';                       // 理论上到不了：plain 永远成立
-      var pk = takeFresh(rng, list, m, planFacts(m), hist);
-      planShapes[planKind(pk.tpl)] = 1;
-      usedTpls.push(pk.tpl);
-      return pk.line;
-    }
-
-    // 开头语（openers 池）多数以 {module} 起头，这里同样走预算：优先挑本篇还没用过的模块
+    /* ---------- 成文：按学习通日报表单的两栏输出 ----------
+     * 学习通日报提交界面只有两个富文本框：「收获与感受」「主要工作、遇到的问题及如何解决的」。
+     * 正文直接按这两栏成文 —— 去掉【实习日报】抬头/日期/公司、开场白、栏目大序号与「明日计划」，
+     * 生成后点两下复制即可分别粘进两个框，不必再手工拆分。
+     * 排版变化保留在「条目编号」上（骨架 sk1~sk6 提供 1./1）/・/-/①/（1）），两栏标题固定为表单字段名。 */
+    var FORM_GAIN = '收获与感受';
+    var FORM_WORK = '主要工作、遇到的问题及如何解决的';
     var vars = { weekday: weekday, dayN: dayN, n: 0, module: pickCapped(rng, mods, used, 3, config.modules) };
-    var headExtra = [config.company, config.jobTitle].filter(Boolean).join(' · ');
-    var lines = [];
-    lines.push(fill(sk.header, {
-      date: dateStr,
-      weekday: weekday,
-      dayPart: dayN ? ('第' + dayN + '天 · ') : '',
-      ext: headExtra ? '（' + headExtra + '）' : ''
-    }));
-    lines.push('');
 
-    // 开头：周一/周五优先用对应池，同样走台账挑最久未用的
-    var openerPool = Phrases.openers;
-    if (dow === 1 && Phrases.openersMon.length && rng() < 0.6) openerPool = Phrases.openersMon;
-    else if (dow === 5 && Phrases.openersFri.length && rng() < 0.6) openerPool = Phrases.openersFri;
-    var op = takeFresh(rng, openerPool, '', vars, hist);
-    usedTpls.push(op.tpl);
-    lines.push(op.line);
-
-    // 栏目驱动成文：按 config.sections 的顺序/标题/开关输出，「今日完成」强制保留
     var sections = (config.sections && config.sections.length) ? config.sections : defaultSections();
-    /* 只启用一个栏目时，章节大序号（「一、」/「（一）」/「【一】」/「一）」）没有区分作用，纯属多余 ——
-     * 用户反馈：只勾选「今日完成」时，正文前面孤零零一个「（一）」读着很怪。
-     * ⚠️ 判断口径必须和下面 forEach 里的保留条件完全一致：「今日完成」是强制保留的核心栏目，
-     * 所以要按「实际会输出的栏目数」算（`sec.on || sec.key === 'done'`），不能只看 on。
-     * 改这里时别忘了同步那一处。 */
-    var soloSection = sections.filter(function (sec) { return sec.on || sec.key === 'done'; }).length <= 1;
 
-    /* 「数量表达」两档（settings.numStyle，设置页可选）：
-     *   'count' = 写具体件数（「今天完成 8 项」）
-     *   其余（默认）= 不写件数，改用「整轮走完 / 这批 / 量不算大 / 集中办完」这类说法
-     * ⚠️ 不写数字时，plans / planTail 里带 {n} 的句式会被**筛掉**（它们 {n} 占比低，过滤后容量仍够）；
-     *    但 done 池 90% 带 {n}，筛完只剩 10 条 → 会疯狂重复，所以 done 单独准备了一套 donePlain。
-     * ⚠️ 它是 **settings（本机偏好）而不是 config（岗位配置）**，所以不进 cfgKey ——
-     *    这符合它的性质，但**别指望"换档位只改「今日完成」一栏"**：
-     *    countStyle 决定了取哪个池，而 pickFresh 里 pickN 的抽数取决于池大小，
-     *    所以换档位后 rng 流会在 done 栏目处分岔，整篇是一份新报告（骨架也可能换）。
-     *    这不影响可复现性：同一档位 + 同一天 + 同配置仍然逐字一致（M16 第⑨组盯着）。 */
+    /* 「数量表达」两档（settings.numStyle）：count = 写具体件数；默认 = donePlain（不报数）。 */
     var countStyle = !!(Store.data.settings && Store.data.settings.numStyle === 'count');
-    function poolByStyle(pool) {
-      return countStyle ? pool : pool.filter(function (t) { return t.indexOf('{n}') < 0; });
-    }
-    var secNo = 0;
-    var problem = null;
-    var doneAt = -1;    // 「今日完成」正文之后的插入点（补充记录续在此处）
-    var doneIdx = 0;    // 该栏目已有条目数，补充记录从这里继续编号
 
-    function emit(title, body) {
-      lines.push('');
-      lines.push((soloSection ? '' : secPrefix(sk.secStyle, secNo)) + title);
-      for (var i = 0; i < body.length; i++) lines.push(body[i]);
-      secNo++;
-    }
+    var problem = null;
+    var gainBody = [];   // 第一栏：收获与感受（原始句，无编号）
+    var workBody = [];   // 第二栏：主要工作项（原始句，无编号）
+    var probBody = [];   // 第二栏：遇到的问题与解决（原始句，无编号）
 
     sections.forEach(function (sec) {
+      if (sec.key === 'plans') return;                    // 学习通日报表单无「明日计划」字段 → 整段不输出
       if (!sec.on && sec.key !== 'done') return;
-      var title = (sec.title || '').trim() || DEFAULT_TITLES[sec.key];
 
       if (sec.key === 'done') {
         // 活动型模块用不带数量的句式，避免「参加晨会…15项」这类别扭表达
-        var doneLines = [];
-        mods.forEach(function (m, i) {
+        mods.forEach(function (m) {
           var isActivity = /^(参加|学习|复盘|晨间)/.test(m);
           vars.n = dailyN(rng, config);
-          modToday[m] = vars.n;   // 供「明日计划」用同一批数字，跨栏目保持一致
           doneMods[m] = 1;
-          /* 事务型模块按「数量表达」档选池：count = done（带件数）；默认 = donePlain（不报数） */
           var pk = takeFresh(rng, isActivity
             ? Phrases.doneActivity
             : (countStyle ? Phrases.done : Phrases.donePlain), m,
             { module: m, n: vars.n, weekday: weekday, dayN: dayN }, hist);
           usedTpls.push(pk.tpl);
-          doneLines.push(itemPrefix(sk, i) + pk.line);
+          workBody.push(pk.line);
         });
         if (extra && extra.trim()) {
-          doneLines.push(itemPrefix(sk, mods.length) + extra.trim().replace(/。$/, '') + '。');
+          workBody.push(extra.trim().replace(/。$/, '') + '。');
         }
-        emit(title, doneLines);
-        doneAt = lines.length;
-        doneIdx = doneLines.length;
 
       } else if (sec.key === 'gains') {
         var gm = pickCapped(rng, mods, used, 3, config.modules);
         var g = takeFresh(rng, Phrases.gains, gm, { module: gm }, hist);
         usedTpls.push(g.tpl);
-        var gl = [g.line];
+        gainBody.push(g.line);
         if (sk.gainsTail !== false && rng() < 0.6) {
           // 收尾句换一个模块：两句都以 {module} 开头，同模块连出两句会一模一样地起头
           var gm2 = pickCapped(rng, mods, used, 3, config.modules);
           var gt = takeFresh(rng, Phrases.gainsTail, gm2, { module: gm2 }, hist);
           usedTpls.push(gt.tpl);
-          gl.push(gt.line);
+          gainBody.push(gt.line);
         }
-        emit(title, gl);
 
       } else if (sec.key === 'problems') {
-        var pl = [];
         if (rng() < 0.65) {
-          /* cap 传 2（不是 3）：问题和解决两句**共用同一个模块**，下面还会补记一次。
-           * 这里若按 cap=3 挑，补记之后实际就占掉 4 次 —— 用户真实日报里
-           * 「图文内容选题策划」出现 4 次（今日完成 1 + 问题 1 + 解决 1 + 计划 1）
-           * 正是这条路径造成的：按 3 挑中时它已被用过 2 次，补记后变成 4。
-           * 传 2 相当于「给解决句预留一个额度」，选中的一定满足 used ≤ 1。 */
+          /* cap 传 2（不是 3）：问题和解决两句共用同一个模块，这里若按 3 挑，补记后实际占 4 次。
+           * 传 2 相当于给解决句预留一个额度，选中的一定满足 used <= 1。 */
           var pm = pickCapped(rng, mods, used, 2, config.modules);
           var pr = takeFresh(rng, Phrases.problems, pm, { module: pm }, hist);
           usedTpls.push(pr.tpl);
           problem = pr.line;
           var so = takeFresh(rng, Phrases.solutions, pm, { module: pm }, hist);
           usedTpls.push(so.tpl);
-          tally(used, pm);   // 解决句也用同一个模块，预算要补记（否则它会被反复挑中）
-          if (sk.problemsStyle === 'joined') {
-            pl.push(pr.line + so.line);
-          } else if (sk.problemsStyle === 'itemed') {
-            pl.push(itemPrefix(sk, 0) + pr.line);
-            pl.push(itemPrefix(sk, 1) + so.line);
-          } else {
-            pl.push(pr.line);
-            pl.push(so.line);
-          }
+          tally(used, pm);   // 解决句也用同一个模块，预算要补记
+          if (sk.problemsStyle === 'lines') { probBody.push(pr.line); probBody.push(so.line); }
+          else { probBody.push(pr.line + so.line); }
         } else {
-          var nm = pickCapped(rng, mods, used, 3, config.modules);
-          var np = takeFresh(rng, Phrases.noProblem, nm, { module: nm }, hist);
+          var nmP = pickCapped(rng, mods, used, 3, config.modules);
+          var np = takeFresh(rng, Phrases.noProblem, nmP, { module: nmP }, hist);
           usedTpls.push(np.tpl);
-          pl.push(sk.problemsStyle === 'itemed' ? (itemPrefix(sk, 0) + np.line) : np.line);
+          probBody.push(np.line);
         }
-        emit(title, pl);
-
-      } else if (sec.key === 'plans') {
-        var pp = [];
-        var pn = 0;
-        if (sk.plansJoin) {
-          /* 合并成一句时也走同一套锚点去重 */
-          var parts = [];
-          planMods.forEach(function (m) {
-            var s = planPick(m);
-            if (s) parts.push(s.replace(/。\s*$/, ''));
-          });
-          if (parts.length) pp.push(parts.join('；') + '。');
-        } else {
-          planMods.forEach(function (m) {
-            var s = planPick(m);
-            if (s) pp.push(itemPrefix(sk, pn++) + s);
-          });
-        }
-        if (rng() < 0.5) {
-          /* 收尾句优先挑「计划里还没出现过的模块」。原来从 planMods（只有 2 个）里挑，
-           * 挑哪个都必然与上面某条计划撞模块 —— 用户日报里计划 2) 和尾句连着两句都是
-           * 「短视频拍摄剪辑明天……」，读起来像同一条写了两次。
-           * 改成先到当天全池找没用过的模块，找不到才退回 planMods。 */
-          var tailCand = config.modules.filter(function (m) {
-            return planMods.indexOf(m) < 0 && (used[m] || 0) < 3;
-          });
-          var tm = tailCand.length ? pickCapped(rng, tailCand, used, 3) : '';
-          if (!tm) tm = planMods[0] || mods[0] || '';
-          var ts = planPick(tm, Phrases.planTail);
-          if (ts) pp.push(ts);
-        }
-        emit(title, pp);
       }
     });
 
+    // 组装两栏：第一栏（收获与感受）+ 第二栏（主要工作…，补充记录/问题在同一栏内续编号）
+    var lines = [FORM_GAIN];
+    gainBody.forEach(function (l) { lines.push(l); });
+    lines.push('');
+    lines.push(FORM_WORK);
+    var wi = 0;
+    workBody.forEach(function (l) { lines.push(itemPrefix(sk, wi++) + l); });
+    var doneAt = lines.length;   // 「主要工作」正文之后的插入点（补充记录续在此处）
+    var doneIdx = wi;            // 该栏已有条目数，补充记录/问题从这里继续编号
     /* ---------- 字数保障 ----------
      * 旧版这里直接 `Phrases.fillers.filter(...)`，只过滤「本篇已用 / 今日已用 / 近 7 天相似」，
      * **完全绕过 candidatePool / tier / 全周期台账**——P0 建的台账这个池一次都没查过。
@@ -890,7 +688,7 @@
      * 每一维的模板编号都会写进 tpls，下次生成时按「最久未用」轮换。
      */
     var min = config.minWords || 0;
-    var need = min ? (min - charCount(lines.join('\n'))) : 0;
+    var need = min ? (min - charCount(lines.join('\n') + '\n' + probBody.join('\n'))) : 0;
     var noteLines = [], tailLines = [], guard = 0;
     /* 补充记录的两层「同篇去重」。
      * 用户反馈：一篇里几条补充记录开头雷同（三条都是「XX以外…」）。实测 45 天 / 600 字：
@@ -976,10 +774,12 @@
       var insLines = noteLines.map(function (s, i) { return itemPrefix(sk, doneIdx + i) + s; });
       lines.splice.apply(lines, [doneAt, 0].concat(insLines));
     }
+    // 问题与解决接在补充记录之后（第二栏内续编号）
+    var pi = doneIdx + noteLines.length;
+    probBody.forEach(function (l) { lines.push(itemPrefix(sk, pi++) + l); });
+
     var text = lines.join('\n');
     if (tailLines.length) text += '\n\n' + tailLines.join('\n');
-
-    if (sk.closer) text += '\n' + sk.closer;
 
     return {
       date: dateStr,

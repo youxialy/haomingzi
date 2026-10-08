@@ -517,6 +517,31 @@
     $('genBtn').addEventListener('click', generateDaily);
     $('variantBtn').addEventListener('click', generateVariant);
     $('saveBtn').addEventListener('click', function () { saveDaily(false); });
+    /* 「学习通两栏」的栏目标题。复制某一栏时只取该栏正文、不含标题本身 ——
+     * 学习通输入框旁已经有对应字段名，再带上标题就重复了。 */
+    var FORM_HEAD_GAIN = '收获与感受';
+    var FORM_HEAD_WORK = '主要工作、遇到的问题及如何解决的';
+    function formBlock(head) {
+      var lines = $('reportEditor').value.split('\n');
+      var start = -1, end = lines.length;
+      for (var i = 0; i < lines.length; i++) {
+        var t = lines[i].trim();
+        if (t === head) { start = i; continue; }
+        if (start >= 0 && (t === FORM_HEAD_GAIN || t === FORM_HEAD_WORK)) { end = i; break; }
+      }
+      if (start < 0) return '';
+      return lines.slice(start + 1, end).join('\n').trim();
+    }
+    $('copyGainBtn').addEventListener('click', function () {
+      var t = formBlock(FORM_HEAD_GAIN);
+      if (!t) { App.toast('还没生成内容，先点「✨ 生成日报」'); return; }
+      copyText(t, '已复制「收获与感受」，粘进学习通第一个框');
+    });
+    $('copyWorkBtn').addEventListener('click', function () {
+      var t = formBlock(FORM_HEAD_WORK);
+      if (!t) { App.toast('还没生成内容，先点「✨ 生成日报」'); return; }
+      copyText(t, '已复制「主要工作…」，粘进学习通第二个框');
+    });
     $('copyBtn').addEventListener('click', function () {
       var t = $('reportEditor').value.trim();
       if (!t) { App.toast('还没有内容'); return; }

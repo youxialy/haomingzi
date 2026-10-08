@@ -598,20 +598,15 @@ async function main() {
   }
 
   /* ============================================================
-   * 14. 只启用一个栏目时不输出章节大序号
+   * 14. 学习通两栏成文（字段名与表单一致）
    *
-   * 用户反馈：只勾选「今日完成」时，正文前面孤零零一个「（一）」，读着很怪 ——
-   * 只有一栏，序号没有区分作用。这里走完整 UI 链路（勾选 → 保存 → 生成）验证。
-   * ⚠️ 判「只有一个栏目」的口径必须与生成侧的保留条件一致：
-   * 「今日完成」是强制保留的核心栏目，所以按「实际会输出的栏目数」算。
+   * 学习通日报提交界面只有两个富文本框：「收获与感受」与
+   * 「主要工作、遇到的问题及如何解决的」。生成结果直接按这两栏组织 ——
+   * 去掉【实习日报】抬头/日期/公司、开场白与「明日计划」，
+   * 点两下复制即可分别粘进两个框，不必再手工拆。这里走完整 UI 链路验证。
    * ============================================================ */
-  section('14. 单栏目时不输出章节大序号');
+  section('14. 学习通两栏成文（两字段 + 无抬头 + 无明日计划）');
   {
-    var SEC_PREFIX = /^(?:[一二三四五六七八]、|（[一二三四五六七八]）|【[一二三四五六七八]】|[一二三四五六七八]）)/;
-    var headOf = function (text, title) {
-      var hit = text.split('\n').filter(function (l) { return l.indexOf(title) >= 0; })[0];
-      return (hit || '').trim();
-    };
     var genOn = function (bdoc, bwin, date) {
       tabTo(bdoc, 'daily');
       var di = bdoc.getElementById('dateInput');
@@ -619,13 +614,6 @@ async function main() {
       fire(di, 'change');
       bdoc.getElementById('genBtn').click();
       return bdoc.getElementById('reportEditor').value;
-    };
-    var setSections = function (bdoc, onKeys) {
-      [].forEach.call(bdoc.querySelectorAll('#sectionsBox .sec-row'), function (row) {
-        var cb = row.querySelector('input[type=checkbox]');
-        cb.checked = onKeys.indexOf(cb.dataset.key) >= 0 || cb.disabled;   // done 不可关闭
-      });
-      bdoc.getElementById('cfgSave').click();
     };
 
     var S = await boot();
@@ -635,24 +623,20 @@ async function main() {
     sdoc.getElementById('cfgStart').value = '2026-09-01';
     sdoc.getElementById('cfgEnd').value = '2026-12-31';
     sdoc.getElementById('cfgMinWords').value = '300';
+    sdoc.getElementById('cfgSave').click();   // 先把配置存下来，否则生成会因配置不完整失败
 
     var rows = sdoc.querySelectorAll('#sectionsBox .sec-row');
-    ok(rows.length === 4, '栏目编辑区渲染出 4 行（拿到 ' + rows.length + ' 行）');
+    ok(rows.length === 3, '栏目编辑区渲染出 3 行（不再有「明日计划」）（拿到 ' + rows.length + ' 行）');
 
-    /* ---- 只留「今日完成」 ---- */
-    setSections(sdoc, ['done']);
-    var solo = genOn(sdoc, S.win, '2026-09-23');
-    var soloHead = headOf(solo, '今日完成');
-    ok(soloHead === '今日完成', '只勾选「今日完成」时，该行就是纯标题（无大序号）', JSON.stringify(soloHead));
-    ok(!solo.split('\n').some(function (l) { return SEC_PREFIX.test(l.trim()); }),
-      '全篇没有任何带大序号的行', solo.split('\n').filter(function (l) { return SEC_PREFIX.test(l.trim()); }).join(' | '));
-
-    /* ---- 放开第二栏 → 大序号应恢复 ---- */
-    setSections(sdoc, ['done', 'gains']);
-    var two = genOn(sdoc, S.win, '2026-09-23');
-    var twoHead = headOf(two, '今日完成');
-    ok(SEC_PREFIX.test(twoHead), '两个以上栏目时大序号回来（正文没被改坏）', JSON.stringify(twoHead));
-    ok(two.indexOf('收获与学习') > 0, '第二栏确实输出了');
+    var txt = genOn(sdoc, S.win, '2026-09-23');
+    var lines = txt.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    var HEAD_GAIN = '收获与感受';
+    var HEAD_WORK = '主要工作、遇到的问题及如何解决的';
+    ok(lines[0] === HEAD_GAIN, '首栏标题就是「收获与感受」', JSON.stringify(lines[0]));
+    ok(txt.indexOf(HEAD_WORK) > 0, '第二栏标题是「主要工作、遇到的问题及如何解决的」');
+    ok(txt.indexOf(HEAD_GAIN) < txt.indexOf(HEAD_WORK), '收获栏在前、主要工作栏在后（与表单字段顺序一致）');
+    ok(!/明日计划/.test(txt), '不再输出「明日计划」');
+    ok(!/实习日报/.test(txt) && !/^【/.test(lines[0]), '不再有【实习日报】抬头/日期/公司');
   }
 
   /* ============================================================

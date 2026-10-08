@@ -29,7 +29,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=2026100602">
+<link rel="stylesheet" href="css/style.css?v=2026100801">
 </head>
 <body>
 <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -93,17 +93,19 @@
         <button class="btn ghost sm" id="nextDay">后一天 ›</button>
       </div>
       <div class="stat-line" id="dailyStat" aria-live="polite"></div>
-      <label class="field-label" for="extraInput">今日特殊事项（可选，生成时合并进「今日完成」）</label>
+      <label class="field-label" for="extraInput">今日特殊事项（可选，生成时合并进「主要工作」）</label>
       <input type="text" id="extraInput" placeholder="例如：参加了消防演练 / 协助月度盘点">
       <div class="actions">
         <button class="btn primary" id="genBtn">✨ 生成日报</button>
         <button class="btn" id="variantBtn" title="对同一日期换一批不同的句式组合">🔄 换一版</button>
         <button class="btn" id="saveBtn">💾 保存</button>
-        <button class="btn" id="copyBtn">📋 复制</button>
+        <button class="btn" id="copyGainBtn" title="复制「收获与感受」这一栏的正文（不含栏目标题）">📋 收获与感受</button>
+        <button class="btn" id="copyWorkBtn" title="复制「主要工作、遇到的问题及如何解决的」这一栏的正文（不含栏目标题）">📋 主要工作与问题</button>
+        <button class="btn" id="copyBtn" title="复制整篇（两栏标题都带上）">📋 整篇</button>
         <button class="btn" id="polishBtn" title="选中正文里的一段，再点这里让 AI 改得更口语">✨ AI 润色</button>
         <button class="btn ghost" id="markBtn">✅ 标记已提交</button>
       </div>
-      <p class="hint">生成内容基于你配置的真实工作模块自动成文；复制后粘贴到学习通日报提交框即可。手动改过的内容重新生成前会先确认，不会被静默覆盖；没点保存的修改会自动暂存，切日期、关页面都不会丢。</p>
+      <p class="hint">正文按学习通日报表单的两栏分段：<b>收获与感受</b> / <b>主要工作、遇到的问题及如何解决的</b>。点对应的「📋」一键复制该栏正文（不含标题），粘进学习通对应输入框即可；也可点「📋 整篇」一次拿走两栏。手动改过的内容重新生成前会先确认，不会被静默覆盖；没点保存的修改会自动暂存，切日期、关页面都不会丢。</p>
     </div>
     <div class="card editor-card">
       <div class="editor-head"><span id="wordCount">0 字</span><span class="hint" id="wordTarget"></span></div>
@@ -370,13 +372,13 @@
 <div id="printSheet" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
-<script defer src="js/store.js?v=2026100602"></script>
-<script defer src="js/phrases.js?v=2026100602"></script>
-<script defer src="js/generator.js?v=2026100602"></script>
-<script defer src="js/composer.js?v=2026100602"></script>
-<script defer src="js/editor.js?v=2026100602"></script>
-<script defer src="js/calendar.js?v=2026100602"></script>
-<script defer src="js/app.js?v=2026100602"></script>
-<script defer src="js/ai.js?v=2026100602"></script>
+<script defer src="js/store.js?v=2026100801"></script>
+<script defer src="js/phrases.js?v=2026100801"></script>
+<script defer src="js/generator.js?v=2026100801"></script>
+<script defer src="js/composer.js?v=2026100801"></script>
+<script defer src="js/editor.js?v=2026100801"></script>
+<script defer src="js/calendar.js?v=2026100801"></script>
+<script defer src="js/app.js?v=2026100801"></script>
+<script defer src="js/ai.js?v=2026100801"></script>
 </body>
 </html>

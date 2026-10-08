@@ -3,9 +3,14 @@
  * tools/bump-version.js — 一键升级缓存版本号（只改这 3 个文件，共 10 处）
  *
  * 用法：
- *   node tools/bump-version.js 2026091901   指定版本号（YYYYMMDDNN）
- *   node tools/bump-version.js              省略 = 按当天日期自动生成 YYYYMMDD01
- *   node tools/bump-version.js --dry-run    只预览，不落盘
+ *   node tools/bump-version.js 2026.10.08.1   指定版本号（YYYY.MM.DD.N）
+ *   node tools/bump-version.js                省略 = 按当天日期自动生成 YYYY.MM.DD.1
+ *   node tools/bump-version.js --dry-run      只预览，不落盘
+ *
+ * 版本号格式：YYYY.MM.DD.N
+ *   · 前四段是日期，一眼能看出是哪天发的（排查线上问题时直接对上号）
+ *   · 末段 N 是「同一天内的第几次发布」，从 1 开始
+ *   · 例：2026 年 10 月 8 日的第三次发布 = 2026.10.08.3
  *
  * 覆盖范围：
  *   · index.html  —— css + 7 个 js 的 ?v=（8 处）
@@ -23,15 +28,18 @@ var path = require('path');
 var ROOT = path.join(__dirname, '..');
 var FILES = ['index.html', 'guide.html', 'sw.js'];
 
-var V_FIND = /\?v=(\d{8,})/;                  // 取当前值：不带 g，需要捕获组
-var V_ALL = /\?v=[\w.-]+/g;                   // 计数 / 替换：带 g
-var SW_FIND = /var VERSION = '(\d{8,})'/;     // 取 sw.js 当前值
-var SW_REPL = /(var VERSION = ')[^']+(';)/;   // 替换 sw.js
+// 版本号格式：YYYY.MM.DD.N（例 2026.10.08.1）
+// 宽松写：允许 2~4 段数字，用点分隔 —— 未来想退化成 2026.10.08 也不用再动这里
+var V_RE = /^\d{4}\.\d{1,2}\.\d{1,2}(\.\d{1,3})?$/;
+var V_FIND = /\?v=([\w.-]+)/;                  // 取当前值：不带 g，需要捕获组
+var V_ALL = /\?v=[\w.-]+/g;                    // 计数 / 替换：带 g
+var SW_FIND = /var VERSION = '([^']+)'/;       // 取 sw.js 当前值
+var SW_REPL = /(var VERSION = ')[^']+(';)/;    // 替换 sw.js
 
 function todayTag() {
   var d = new Date();
   var p = function (n) { return String(n).padStart(2, '0'); };
-  return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '01';
+  return '' + d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate()) + '.1';
 }
 
 function readIfExists(rel) {
@@ -45,8 +53,8 @@ var dry = args.indexOf('--dry-run') >= 0 || args.indexOf('-n') >= 0;
 var explicit = args.filter(function (a) { return a.charAt(0) !== '-'; })[0];
 var next = explicit || todayTag();
 
-if (!/^\d{8,}$/.test(next)) {
-  console.error('✗ 版本号必须是 8 位以上数字（YYYYMMDDNN），收到：' + next);
+if (!V_RE.test(next)) {
+  console.error('✗ 版本号格式应为 YYYY.MM.DD.N（例 2026.10.08.1），收到：' + next);
   process.exit(1);
 }
 

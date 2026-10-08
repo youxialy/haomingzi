@@ -223,11 +223,23 @@ textarea { resize: vertical; line-height: 1.8; }
 .phrase-item .btn { flex-shrink: 0; }
 
 /* ---------- 设置 ---------- */
-.job-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+/* 岗位卡片。
+ * ⚠️ 等高问题的正确处理方式是**把岗位名控制短**（≤7 字，见 js/phrases.js），
+ *    而不是靠 CSS 锁高：grid 的行高由该行最高的卡片决定，只要有一个名字换行，
+ *    整行就被撑高。锁 min-height 只会让所有行一起变胖，治不了本。
+ * 这里的 flex 居中 + min-height 只做兜底：万一将来某名字仍过长，
+ * 至少保证同行卡片齐平（不会东倒西歪），而不是撑出高低差。 */
+.job-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px; align-items: stretch;
+}
 .job-card {
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   text-align: center; cursor: pointer; font-size: 14px; background: var(--bg); transition: all .12s;
   font-family: inherit; width: 100%; color: inherit; line-height: 1.5;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 42px; box-sizing: border-box;   /* 一行高：14px × 1.5 + 上下 padding 20px */
+  word-break: break-word; overflow-wrap: anywhere;
 }
 .job-card:hover { border-color: var(--primary); }
 .job-card.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }

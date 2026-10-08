@@ -133,7 +133,9 @@ async function main() {
   ok(doc.getElementById('tabbtn-daily').getAttribute('aria-selected') === 'true', '首屏页签 aria-selected 正确');
   ok(!!doc.getElementById('mainContent'), 'skip-link 目标 #mainContent 存在');
   ok(doc.getElementById('toast').getAttribute('aria-live') === 'polite', 'toast 带 aria-live');
-  ok(doc.querySelectorAll('#jobGrid .job-card').length === 28, 'init 跑完了（岗位卡片已渲染）');
+  var jobN = Object.keys(win.Phrases.jobTypes).length;
+  ok(doc.querySelectorAll('#jobGrid .job-card').length === jobN,
+    'init 跑完了（岗位卡片已渲染 ' + jobN + ' 张）');
 
   /* ============================================================
    * 2. 主流程：配置 → 生成 → 保存 → 切日期不丢

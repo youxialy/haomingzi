@@ -671,7 +671,16 @@
           var pr = takeFresh(rng, Phrases.problems, pm, { module: pm }, hist);
           usedTpls.push(pr.tpl);
           problem = pr.line;
-          var so = takeFresh(rng, Phrases.solutions, pm, { module: pm }, hist);
+          /* 解决句按骨架模式选池（2026-10-13）：
+           * · 'lines'（sk1/sk3/sk5）→ Phrases.solutions（含 {module}）：
+           *   问题句和解决句**各自成行**，解决句必须自带锚点，
+           *   否则单独一行看是无锚点的空信息句，会被 M4 判空。
+           * · 合并成一行（sk2/sk4/sk6）→ Phrases.solutionsInline（**不含** {module}）：
+           *   问题句已经在同一行里交过锚点了，解决句再重复一次模块名，
+           *   就成了「一行里同一个模块名出现两次」——实测占 32.2% 的日报，
+           *   是用户唯一能一眼看出来的重复。承接句与问题句同行，也不会被判空信息句。 */
+          var solPool = sk.problemsStyle === 'lines' ? Phrases.solutions : Phrases.solutionsInline;
+          var so = takeFresh(rng, solPool, pm, { module: pm }, hist);
           usedTpls.push(so.tpl);
           tally(used, pm);   // 解决句也用同一个模块，预算要补记
           if (sk.problemsStyle === 'lines') { probBody.push(pr.line); probBody.push(so.line); }
@@ -722,7 +731,14 @@
     var noteMods = {}, noteShapes = {};
     var leadShape = function (t) {
       var i = t.indexOf('{module}');
-      return i === 0 ? t.slice(8, 10) : t.slice(0, 2);   // {module} 占 8 个字符
+      /* ⚠️ 一律取「{module} 之后的 2 个字」，读起来就是补充记录的开头形态。
+       * 旧版对不以 {module} 开头的模板取**句首** 2 字，于是
+       *   `{module}上对{lex}的判断偏保守` → '上对'
+       *   `在{module}上对一项标准把握不准`  → '在{'
+       * 被判成两种形态放了进来，可实际输出是「…上对…」和「在…上对…」——
+       * 读者看到的开头完全一样。去重口径必须和「用户看到的形态」一致，
+       * 否则等于漏网（测试度量的也正是「模块名后 2 字」）。 */
+      return i < 0 ? t.slice(0, 2) : t.slice(i + 8, i + 10);   // {module} 占 8 个字符
     };
     while (need > 0 && guard < 28) {
       /* 补充记录的模块：只在本轮没用过的模块里挑，且受「每模块 ≤3 次」的总预算约束。

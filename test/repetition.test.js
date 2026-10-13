@@ -281,7 +281,10 @@ section('M5 句式池容量（条数 ÷ 日均调用次数 ≥ 20 天）');
 (function () {
   var rate = {
     done: 3, doneActivity: 1.5,
-    gains: 1, gainsTail: 0.6, problems: 0.65, solutions: 0.65, noProblem: 0.35,
+    gains: 1, gainsTail: 0.6, problems: 0.65, noProblem: 0.35,
+    /* 解决句按骨架分流（见 generator.js 的 solPool 注释）：sk1/sk3/sk5（lines）用 solutions，
+     * sk2/sk4/sk6（合并成一行）用 solutionsInline —— 两者各占一半，日均调用 ≈0.65×0.5。 */
+    solutions: 0.33, solutionsInline: 0.33,
     fillers: 1,
     /* 「不写件数」档专用的备选池（settings.numStyle）。90 条 ÷ 日均 3 次 = 30 天 */
     donePlain: 3
@@ -349,7 +352,7 @@ section('M6 同栏目整段重复（同一栏目、整段逐字相同）');
 section('M7 模板病句（「按时进行参加晨会」这类通用动词 + 模块首词撞车）');
 (function () {
   var pools = ['done', 'doneActivity', 'gains', 'gainsTail', 'problems', 'solutions',
-    'noProblem', 'donePlain', 'fillers',
+    'solutionsInline', 'noProblem', 'donePlain', 'fillers',
     /* 补漏：这三个池以前不在巡检范围内，「补充记录」的句式一直没被这条断言覆盖。
      * 补上后立刻查出一条旧规则的误报（见 badJoin 里对「首二字相同」的动词限定）。 */
     'noteLead', 'noteAct', 'noteEnd'];
